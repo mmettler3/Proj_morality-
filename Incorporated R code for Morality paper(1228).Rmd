@@ -1,0 +1,1613 @@
+---
+title: "Morality paper"
+output: html_document
+date: "2024-12-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+```{r}
+install.packages("marginaleffects")
+install.packages("gt")
+install.packages("boot")  
+install.packages("psych")  
+install.packages("summarytools") 
+install.packages("skimr")  
+install.packages("dplyr") 
+install.packages("knitr")
+install.packages("tinytex")
+install.packages("kableExtra")
+tinytex::install_tinytex()
+
+library(psych)  # For describe()
+library(knitr)  # For kable()
+library(dplyr)
+library(knitr)
+library(skimr)
+library(summarytools)
+library(boot)  
+library(gt)
+library(marginaleffects)
+library(tidyverse)
+library(haven)
+library(estimatr)
+library(stargazer)
+library(kableExtra)
+```
+
+
+
+```{r}
+#dt11<-read_dta("G:/My Drive/UIUC 2024 Summer/First Year Project/R code/prri_2011.DTA")
+sum_count<-nrow(dt11)
+sum_count
+
+#dt16<-read_dta("G:/My Drive/UIUC 2024 Summer/First Year Project/R code/prri_2016.DTA")
+sum_count<-nrow(dt16)
+sum_count
+
+
+dt11<-read_dta("/Users/yeowonlim/Library/CloudStorage/GoogleDrive-yeowonl2@illinois.edu/My Drive/UIUC 2024 Summer/First Year Project/R code/prri_2011.DTA")
+dt16<-read_dta("/Users/yeowonlim/Library/CloudStorage/GoogleDrive-yeowonl2@illinois.edu/My Drive/UIUC 2024 Summer/First Year Project/R code/prri_2016.DTA")
+
+# 2011
+#party:   1 Republican, 2 Democrat, 3 Independent, 98 Other party, 99 Don't know/Refused (Vol.)
+#partyln: 1) Republican 2) Democrat 98) Neither/Other 99) Don't know/Refused (Vol.)
+
+
+print(unique(dt11$party))
+print(unique(dt11$partyln))
+
+dt11$rep<- ifelse(dt11$party==1 | dt11$partyln==1,1,0)
+dt11$dem<- ifelse(dt11$party==2 | dt11$partyln==2,1,0)
+dt11$ind<- ifelse(dt11$rep==0 &   dt11$dem==0 & dt11$party==3,1,0)      
+
+
+# 2016 
+#party: 0 Other, 1 A Republican, 2 A Democrat, 3 An Independent, 9 Don't know?/Refused
+# partyln: 1 Republican, 2 Democrat, 4 Other, 9 Don't know?/Refused
+
+print(unique(dt16$party))
+print(unique(dt16$partyln))
+
+dt16$rep<- ifelse(dt16$party==1 | dt16$partyln==1,1,0)
+dt16$dem<- ifelse(dt16$party==2 | dt16$partyln==2,1,0)
+dt16$ind<-ifelse(dt16$rep==0 & dt16$dem==0 & dt16$party==3,1,0)   
+
+
+# Morality: dt11$privpub:   1 Yes, 2 No, 98 Depends (Vol.), 99 Don't know/Refused (Vol.)
+print(unique(dt11$privpub))
+
+dt11$imm<-ifelse(dt11$privpub==1,1,
+                 ifelse(dt11$privpub==2,0,
+                        ifelse(dt11$privpub==98,.5,NA)))
+
+
+
+# Morality: dt16$Q8: 1 Yes, 2 No, 3 Depends, 9 Don't Know/Refused
+
+print(unique(dt16$Q8))
+
+dt16$imm<-ifelse(dt16$Q8==1,1,
+                 ifelse(dt16$Q8==2,0,
+                        ifelse(dt16$Q8==3,.5,NA)))
+
+
+
+#Bornagain Evangelicals: dt11$bgain:   1 Yes, 2 No, 99 Refused
+print(unique(dt11$born))
+print(unique(dt16$born))
+
+
+table(dt11$born, dt11$relig) 
+# 2011: WHen bornagain is 1, their religion is 1 Protestant(223), 6 Christian or 'just Christian'(42), 95 Something else(3)
+
+unique(dt11$relig) 
+# 1 Protestant, 2 Catholic 3 Jewish 4 Mormon
+#5 Muslim 6 Christian or 'just Christian' 7 Unitarian/Universalist
+#8 Hindu 9 Buddhist 95 Something else 98 Nothing particular 99 Refused
+
+
+
+table(dt16$born, dt16$relig)
+
+
+# Filter rows where born == 1 and relig is not NULL
+filtered_data <- dt16 %>%
+  filter(born == 1 & !is.na(relig)) # Ensure relig is not NA
+
+# Group by religion and count occurrences, adding a label
+religion_counts <- filtered_data %>%
+  group_by(relig) %>%
+  summarize(count = n(), .groups = "drop") %>% # Summarize counts
+  mutate(label = paste("Religion:", relig, "- Count:", count)) # Add descriptive labels
+
+
+print(religion_counts)
+
+# bornagain's religion: 
+# 1, 5, 6, 8, 13, 14, 15, 22, 23, 24, 25, 26, 27, 29,
+
+
+#     1 Baptist 85
+#     2 Catholic, Roman Catholic 
+#     5 Evangelical
+#     6 Jehovah's Witness
+#     7 Jewish/Judaism
+#     8 Lutheran
+#    10 Mormon (Church of Jesus Christ of Latter-Day Saints/LDS)
+#    11 Muslim/Islamic
+#    12 Orthodox (Eastern, Greek, Russian, Armenian, etc)
+#    13 Pentecostal (Assemblies of God, Four-Square Gospel)
+#    14 Presbyterian
+#    15 Protestant
+#    16 Seventh-Day Adventist
+#    19 Unitarian/Universalist
+#    20 Buddhist
+#    21 Hindu
+#    22 Christian (Just Christian)
+#    23 Non-denominational or Independent Church
+#    24 Episcopalian or Anglican
+#    25 Methodist
+#    26 Church of Christ, or Disciples of Christ (Christian Church)
+#    27 Church of God
+#    28 Congregational or United Church of Christ (UCC)
+#    29 Holiness (Nazarenes, Wesleyan Church, Salvation Army)
+#    30 Reformed
+#    90 Nothing in particular
+#    95 Atheist
+#    96 Agnostic
+#    97 Other
+#    99 Don't know?/Refused
+
+
+
+#Born again 2011
+dt11$bgain<-ifelse(is.na(dt11$born),0,
+                   ifelse(dt11$born==1,1,0))
+
+
+#dt16$born
+dt16$bgain<-ifelse(is.na(dt16$born),0,
+                   ifelse(dt16$born==1,1,0))
+
+
+# Age
+print(unique(dt11$age))
+class(dt11$age)
+
+#age: continous 
+print(unique(dt16$age))
+class(dt16$age)
+
+
+dt16$age1<-dt16$age
+
+dt16<-dt16%>%
+mutate(age=case_when(
+  age>=18 & age<=20~1,
+  age>=21 & age<=24~2,
+  age>=25 & age<=29~3,
+  age>=30 & age<=34~4,
+  age>=35 & age<=39~5,
+  age>=40 & age<=44~6,
+  age>=45 & age<=49~7,
+  age>=50 & age<=54~8,
+  age>=55 & age<=59~9,
+  age>=60 & age<=64~10,
+  age>=65 & age<=69~11,
+  age>=70 & age<=74~12,
+  age>=75~13,
+  TRUE ~ NA_real_))
+  
+
+
+# Gender
+dt11$female<-ifelse(dt11$sex==2,1,0)
+dt16$female<-ifelse(dt16$sex==2,1,0)
+                  
+
+# Education       
+print(unique(dt11$educ))
+table(dt11$educ)
+attr(dt11$educ, "labels")
+
+dt11$educ1<-ifelse(dt11$educ<=2,1,
+                    # 1: 8th grade or less,  2: High school incomplete (grades 9, 10, 11)
+                   ifelse(dt11$educ==3,2,
+                    # 3:  High school complete (grade 12)
+                          ifelse(dt11$educ==4,3, 
+                    # 4: Some college, but no degree
+                                 ifelse(dt11$educ==5,4,  
+                    # 5: Associate's degree =  Graduated college
+                                        ifelse(dt11$educ==6, 4, 
+                    # 6: College graduate/Bachelor's degree = Graduated college
+                                               ifelse(dt11$educ>=7, 5,NA))))))      
+                    # 7: Postgraduate degree, such as Master's, Ph.D., M.D., J.D =  Graduate school or more
+                    # 99: Refused/Don't know? -> coded as 5
+
+
+print(unique(dt16$educ))  
+table(dt16$educ)
+attr(dt16$educ, "labels")
+
+dt16$educ1<-ifelse(dt16$educ==1,1,
+                   # 1: Less than high school graduate
+                   ifelse(dt16$educ==2,2,
+                   # 2:  High school graduate
+                          ifelse(dt16$educ==3,3,
+                   # 3: Some college 
+                                ifelse(dt11$educ==4,4,
+                   # 4:  Graduated college
+                                 ifelse(dt11$educ==6,4, 
+                   # 6: Technical school/other coded as Graduated college
+                                        ifelse(dt11$educ>=5,5,NA))))))
+                   # 5: Graduate school or more & 9: Refused coded as 5
+
+
+dt11$year<-0
+dt16$year<-1
+
+
+#View(dt11) #1006
+table(dt11$rep) # 417
+table(dt11$ind) # 96
+#----------------513
+
+#View(dt16) #dt16 1005
+table(dt16$rep) # 377
+table(dt16$ind) # 114
+#----------------491
+
+
+
+######################################### data exploration of morality 2011
+
+table(dt11$bgain, dt11$offstand, useNA = "ifany")
+table(dt11$bgain)
+
+unique(dt11$offstand)
+
+evannum <- sum(!is.na(dt11$bgain[dt11$bgain ==1]))
+evannum
+nonevannum <- sum(!is.na(dt11$bgain[dt11$bgain == 0]))
+nonevannum
+
+totalnum <- sum(!is.na(dt11$bgain))
+totalnum
+
+evannum_mor <- sum(!is.na(dt11$offstand[dt11$offstand==1 & dt11$bgain ==1]))
+evannum_mor
+
+nonevannum_mor <-  sum(!is.na(dt11$offstand[dt11$offstand==1 & dt11$bgain ==0]))
+nonevannum_mor
+
+perevan <- evannum_mor/evannum*100.    ## 68%
+perevan
+pernonevan <- nonevannum_mor/nonevannum*100. ##58%
+pernonevan
+
+
+######################################### data exploration of morality 2016
+
+table(dt16$bgain, dt16$Q7A, useNA = "ifany")
+table(dt16$bgain)
+
+evannum <- sum(!is.na(dt16$bgain[dt16$bgain ==1])) #270
+evannum
+nonevannum <- sum(!is.na(dt16$bgain[dt16$bgain == 0])) #735
+nonevannum
+
+totalnum <- sum(!is.na(dt16$bgain))
+totalnum
+
+evannum_mor <- sum(!is.na(dt16$bgain[(dt16$Q7A==1 | dt16$Q7A==2) & dt16$bgain ==1])) #212
+evannum_mor
+
+nonevannum_mor <-  sum(!is.na(dt16$bgain[(dt16$Q7A==1 | dt16$Q7A==2) & dt16$bgain ==0])) #574
+nonevannum_mor
+
+perevan <- evannum_mor/evannum*100.    ## 78.51%
+perevan
+pernonevan <- nonevannum_mor/nonevannum*100. ##78.09%
+pernonevan
+
+
+######################################### data exploration of morality
+
+list<-list(dt11[,c("educ1","age","year","female","rep","ind","dem","bgain","imm")],
+       dt16[,c("educ1","age","year","female","rep","ind","dem","bgain","imm")])
+# selects specific columns ("educ1", "age", "year", "female", "rep", "ind", "dem", "bgain", and "imm") from the dt11 dataset.
+#This selects all rows from dt11 but only the specified columns ("educ1", "age", etc.). The empty space before the comma tells R to include every row in the subset, without filtering any out.
+
+
+dt<-rbind(list[[1]],list[[2]])
+
+
+
+View(dt)
+
+# subset only rep and Indep
+dt_rep_ind <- dt %>% 
+filter(dt$rep==1 | dt$ind==1) # Rep: 794, INd: 210 , sum->1004
+
+#table(dt$year, dt$rep)
+#table(dt$year, dt$ind)
+
+
+# Convert haven_labelled variables to factors or numeric as needed
+#dt_rep_ind_destat <- dt_rep_ind %>%
+#  mutate(across(where(is.labelled), as_factor)) %>%  # Convert haven_labelled to factors
+#  drop_na()  # Remove rows with missing values
+
+# Calculate descriptive statistics for selected variables
+#descriptive_stats <- dfSummary(dt_rep_ind_destat, round.digits = 2)
+
+# Print the descriptive statistics
+#print(descriptive_stats)
+
+
+#sumcount <- sum(dt$rep == 1, na.rm = TRUE) #ignore missing values
+#sumcount
+#sumcount <- sum(dt$ind == 1, na.rm = TRUE) #ignore missing values
+#sumcount
+
+#View(dt_rep_ind)
+#class(dt_rep_ind)    # Check the type of the object
+#nrow(dt_rep_ind)     # Check the number of rows
+
+#dt_rep_ind <- as.data.frame(dt_rep_ind)
+#sumcount <- nrow(dt_rep_ind)
+#sumcount  # Should show 1004
+
+
+#rbind(...): "row bind" combines the rows of the two data frames. It takes the rows from list[[1]] (the subset of dt11) and stacks them on top of the rows from list[[2]] 
+#(the subset of dt16). The resulting data frame dt will have all the rows from both dt11 and dt16, combined into a single data frame.
+# entire populaion 
+dt$tgroup<-ifelse(dt$rep==1 & dt$bgain==1 |dt$ind==1 & dt$bgain==1,1,0)
+dt$tgroup_rep<-ifelse(dt$rep==1 & dt$bgain==1,1,0)
+
+dt$did<-dt$year*dt$tgroup
+dt$did_rep<-dt$year*dt$tgroup_rep
+
+dd<-lm(imm~year+tgroup+did+age+female+educ1,data=dt)
+summary(dd)
+
+dd_rep<-lm(imm~year+tgroup_rep+did_rep+age+female+educ1,data=dt)
+summary(dd_rep)
+
+
+
+
+
+pre_treatment_control <- mean(dt$imm[dt$year == 0 & dt$tgroup == 0], na.rm = TRUE)
+pre_treatment_treated <- mean(dt$imm[dt$year == 0 & dt$tgroup == 1], na.rm = TRUE)
+post_treatment_control <- mean(dt$imm[dt$year == 1 & dt$tgroup == 0], na.rm = TRUE)
+post_treatment_treated <- mean(dt$imm[dt$year == 1 & dt$tgroup == 1], na.rm = TRUE)
+
+pre_treatment_control 
+pre_treatment_treated 
+post_treatment_control
+post_treatment_treated 
+
+
+length(dt$imm[dt$year == 0 & dt$tgroup == 0])
+length(dt$imm[dt$year == 0 & dt$tgroup == 1])
+length(dt$imm[dt$year == 1 & dt$tgroup == 0])
+length(dt$imm[dt$year == 1 & dt$tgroup == 1])
+```
+
+```{r}
+######################################Rep and Inde Subset (0910)
+
+
+dt_rep_ind$tgroup<-ifelse(dt_rep_ind$rep==1 & dt_rep_ind$bgain==1 |dt_rep_ind$ind==1 & dt_rep_ind$bgain==1,1,0)
+
+dt_rep_ind$did<-dt_rep_ind$year*dt_rep_ind$tgroup
+
+dt_rep_ind1<-dt_rep_ind%>%
+  #rb1 <- rb %>% ...: This line creates a new data frame rb1 from the original data frame rb.
+  dplyr::select(imm, year, tgroup, did, age, female, educ1)%>%
+  # It selects specific columns (imm, pt, no_p, pb, bagain, UND475_picker) from rb.
+  drop_na()
+#drop_na(): This function removes any rows that contain NA (missing) values in the selected columns.
+
+
+dd<-lm(imm~year+tgroup+did+age+female+educ1,data=dt_rep_ind1)
+summary(dd)
+
+stargazer(
+  dd,
+  title = "2011 and 2016 Regression",
+  type = "text"
+)
+
+
+
+
+
+```
+
+
+```{r}
+###############descriptive statististics 0906
+
+names(dt_rep_ind)
+
+
+# Process the data and output the LaTeX table
+dt_rep_ind1 %>%
+  dplyr::select(imm, year, tgroup, age, female, educ1) %>%  # Select bgain as well for filtering
+  filter(tgroup == 1) %>%  # Filter rows where bgain == 1
+  describe(fast = TRUE) %>%  # Descriptive statistics with the 'psych' package
+  kable(format = "latex", digits = 2)  # Output in LaTeX format
+
+# Process the data and output the LaTeX table
+dt_rep_ind1 %>%
+  dplyr::select(imm, year, tgroup, age, female, educ1) %>%  # Select bgain as well for filtering
+  filter(tgroup == 0) %>%  # Filter rows where bgain == 1
+  describe(fast = TRUE) %>%  # Descriptive statistics with the 'psych' package
+  kable(format = "latex", digits = 2)  # Output in LaTeX format
+
+dt_rep_ind1 %>%
+  group_by(year, tgroup) %>%
+  summarize(
+    imm_mean = mean(imm, na.rm = TRUE),  # Ignore NA values when calculating mean
+    imm_sd = sd(imm, na.rm = TRUE),      # Ignore NA values when calculating standard deviation
+    n = n()
+  ) %>%
+  kable(., format = "latex", digits = 2)
+
+dt_rep_ind %>%
+  dplyr::select(imm, year, tgroup, age, female, educ1) %>%  # Select bgain as well for filtering
+  group_by(year, tgroup)%>%
+  describe(fast = TRUE) %>%  # Descriptive statistics with the 'psych' package
+  kable(format = "latex", digits = 2)  # Output in LaTeX format
+
+
+###############descriptive statististics
+
+
+
+# Calculate descriptive statistics for selected variables
+descriptive_stats <- dfSummary(dt_rep_ind, round.digits = 2)
+
+# Print the descriptive statistics
+print(descriptive_stats)
+
+
+######################################
+
+# Print the title and a separator line manually
+cat("2011 and 2016 Regression\n")
+cat(strrep("-", 50), "\n")
+
+# Display the regression models
+screenreg(
+  list(
+    dd,
+    dd_rep
+  ),
+  type = "latex"
+)
+
+
+stargazer(
+   dd,
+   dd_rep,
+   title = "2011 and 2016 Regression",
+   type = "latex"
+)
+```
+
+```{r}
+#generate predicted values from a model. The results of these predictions are being assigned to the variable bb1.
+#This function typically works with a model object (e.g., from lm, glm, or other model fitting functions) and a set of new data points for which you want to generate predictions.
+bb1<-predictions(
+  dd,
+  newdata=datagrid(year=c(0,1),tgroup=c(0,1),did=c(0,1)),
+  vcov = TRUE,
+  conf_level = 0.95)
+
+# newdata specifies the data points for which predictions are being generated.
+# The datagrid() function is being used to create a grid of all combinations of the specified values for year, tgroup, and did.
+# year = c(0, 1) means that predictions will be generated for year = 0 and year = 1.
+# tgroup = c(0, 1) means predictions will be generated for tgroup = 0 and tgroup = 1.
+# did = c(0, 1) means predictions will be generated for did = 0 and did = 1.
+# The datagrid() function effectively creates all possible combinations of these values, resulting in a set of data points for which predictions will be calculated.
+
+
+#function should return the variance-covariance matrix of the predictions. This matrix gives you information about the uncertainty associated with the predictions.
+# The variance-covariance matrix is often used to calculate standard errors and confidence intervals for the predictions.
+
+#A confidence level of 0.95 means that the function will compute 95% confidence intervals for the predicted values. 
+# This indicates the range within which the true values are expected to fall with 95% confidence.
+
+bb1
+
+#bb1<-bb1[c(1,3,5,8),c(2,7,8,13,14,15)]
+bb1<-bb1[c(1,3,5,8),]
+#modifies the bb1 data frame by keeping only the rows 1, 3, 5, and 8, and only the columns 2, 7, 8, 13, 14, and 15. 
+bb1$Group<-ifelse(bb1$tgroup==0,"Non-evangelical","Evangelical") 
+bb1$Year<-ifelse(bb1$year==0,"2011","2016")
+bb1%>%
+ggplot(aes(x = Year, y = estimate, color=Group, group = Group)) +
+  #geom_hline(yintercept = 0, linetype = 2) +
+  geom_point(position = position_dodge(width = 0.15),size=3)+ 
+  geom_line(aes(linetype=Group),position = position_dodge(width = 0.15),size=1)+
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),position = position_dodge(width = 0.15),width=.1,size=1) + 
+  ylab("")+
+  xlab("")+
+  ylim(.2,1)+
+ # scale_x_discrete(labels = c("")
+ theme_classic()
+
+
+
+
+```
+
+
+
+```{r}
+#############################testing 0906 : 
+# Assuming 'bb1' is the result of the predictions and is already calculated and trimmed
+# Modify the data frame for group and year labels
+# Assuming 'bb1' is the result of the predictions and is already calculated and trimmed
+# Modify the data frame for group and year labels
+bb1$Group <- ifelse(bb1$tgroup == 0, "Non-evangelical", "Evangelical") 
+bb1$Year <- ifelse(bb1$year == 0, "2011", "2016")
+
+# Calculate the mean for each group and year
+mean_bb1 <- bb1 %>%
+  group_by(Year, Group) %>%
+  summarise(mean_estimate = mean(estimate, na.rm = TRUE))
+
+# Plot the predictions with confidence intervals and overlay the mean points and their labels
+bb1 %>%
+  ggplot(aes(x = Year, y = estimate, color = Group, group = Group)) +
+  geom_point(position = position_dodge(width = 0.15), size = 3) + 
+  geom_line(aes(linetype = Group), position = position_dodge(width = 0.15), size = 1) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                position = position_dodge(width = 0.15), width = 0.1, size = 1) + 
+  # Mark the mean points
+  geom_point(data = mean_bb1, aes(x = Year, y = mean_estimate), 
+             position = position_dodge(width = 0.15), size = 5, shape = 17, color = "black") +
+  # Add text labels for the mean values
+  geom_text(data = mean_bb1, aes(x = Year, y = mean_estimate, label = round(mean_estimate, 2)), 
+            position = position_dodge(width = 0.15), vjust = -1, size = 5, color = "black") +
+  ylab("Estimated Values") +  # Add a label for clarity
+  xlab("Year") +              # Label the x-axis
+  ylim(.2, 1) +               # Set limits for the y-axis
+  theme_classic() +           # Use the classic theme
+  theme(
+    legend.position = "bottom", 
+    legend.title = element_blank(),
+    text = element_text(size = 14)
+  )
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
+```{r}
+#############################testing
+
+
+# Republicans only
+
+bb1<-predictions(
+  dd_rep,
+  newdata=datagrid(year=c(0,1),tgroup_rep=c(0,1),did_rep=c(0,1)),
+  vcov = TRUE,
+  conf_level = 0.95)
+
+bb1<-bb1[c(1,3,5,8),]
+#modifies the bb1 data frame by keeping only the rows 1, 3, 5, and 8, and only the columns 2, 7, 8, 13, 14, and 15. 
+bb1$Group<-ifelse(bb1$tgroup_rep==0,"Non-evangelical","Evangelical") 
+bb1$Year<-ifelse(bb1$year==0,"2011","2016")
+bb1%>%
+  ggplot(aes(x = Year, y = estimate, color=Group, group = Group)) +
+  #geom_hline(yintercept = 0, linetype = 2) +
+  geom_point(position = position_dodge(width = 0.15),size=3)+ 
+  geom_line(aes(linetype=Group),position = position_dodge(width = 0.15),size=1)+
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),position = position_dodge(width = 0.15),width=.1,size=1) + 
+  ylab("")+
+  xlab("")+
+  ylim(.2,1)+
+  # scale_x_discrete(labels = c("")
+  theme_classic()
+```
+
+
+
+```{r}
+#############################################
+
+dt%>%
+  dplyr::select(year,bgain,imm,educ1,age,female)%>%
+  drop_na()%>%
+  group_by(year,bgain)%>%
+  summarize(imm_mean=mean(imm,na.rm = TRUE),
+            imm_sd=sd(imm,na.rm = TRUE),
+            age_mean=mean(age),
+            age_sd=sd(age),
+            female_mean=mean(female),
+            female_sd=sd(female),
+            educ_mean=median(educ1),
+            n=n())%>%
+  kable(.,format="latex",digits=2)
+  
+
+# why bornagain, repub, indep, demo? 
+
+dt %>%
+  select(year, bgain, imm, educ1, age, female) %>%
+  drop_na() %>%
+  group_by(year, bgain) %>%
+  summarize(
+    imm_mean = mean(imm, na.rm = TRUE),
+    imm_sd = sd(imm, na.rm = TRUE),
+    age_mean = mean(age, na.rm = TRUE),
+    age_sd = sd(age, na.rm = TRUE),
+    female_mean = mean(female, na.rm = TRUE),
+    female_sd = sd(female, na.rm = TRUE),
+    educ_mean = median(educ1, na.rm = TRUE),
+    educ_sd = sd(educ1, na.rm = TRUE),
+    n = n(),
+    .groups = 'drop'  # to prevent grouping message
+  ) %>%
+  kable(digits = 2)  # Use default "markdown" format for console output
+
+
+```
+
+
+```{r}
+###############
+
+# Prepare the table with new variable names
+summary_table <- dt %>%
+  select(year, bgain, imm, educ1, age, female) %>%
+  drop_na() %>%
+  group_by(year, bgain) %>%
+  summarize(
+    `Immorality Tolerance Mean` = mean(imm, na.rm = TRUE),
+    `Immorality Tolerance SD` = sd(imm, na.rm = TRUE),
+    `Age Mean` = mean(age, na.rm = TRUE),
+    `Age SD` = sd(age, na.rm = TRUE),
+    `Female Mean` = mean(female, na.rm = TRUE),
+    `Female SD` = sd(female, na.rm = TRUE),
+    `Education Median` = median(educ1, na.rm = TRUE),
+    n = n(),
+    .groups = 'drop'
+  ) %>%
+  rename(
+    Year = year,
+    `Born-again Evangelicals` = bgain
+  )
+
+# Print the table in LaTeX format
+kable(summary_table, format = "latex", digits = 2, booktabs = TRUE, col.names = c(
+  "Year", "Born-again Evangelicals", "Immorality Tolerance Mean", "Immorality Tolerance SD",
+  "Age Mean", "Age SD", "Female Mean", "Female SD", "Education Median", "Sample Size"
+))
+
+
+```
+
+
+
+```{r}
+####################################################################
+# part two republicans and independent (using 2018 data)
+
+#df<-read_sav("G:/My Drive/UIUC 2024 Summer/First Year Project/R code/cces18_0902.sav")
+df<-read_sav("/Users/yeowonlim/Library/CloudStorage/GoogleDrive-yeowonl2@illinois.edu/My Drive/UIUC 2024 Summer/First Year Project/R code/cces18.sav")
+
+View(df)
+class(df$UND475)
+df$fact_UND475 <- haven::as_factor(df$UND475)
+table(df$UND475_picker, df$fact_UND475)
+
+#sumcount<-df$UND475_picker %>% 
+#sumco<-sum(df$UND475_picker, na.rm=TRUE)
+#sumco
+#groupby(df$UND475)
+
+#number of priming conditions 
+
+
+new_variable <- df %>%
+  filter(UND475_picker==3) %>% 
+  group_by(UND475) %>%
+  summarise(mean_picker = sum(UND475_picker, na.rm = TRUE))
+
+new_variable
+
+
+new_variable <- df %>%
+  group_by(UND475_picker) %>%
+  summarise(mean_picker = sum(UND475_picker, na.rm = TRUE))
+
+new_variable
+
+
+
+
+#mean_picker: This part is creating a new column named mean_picker in the summarised output.
+#The column mean_picker will contain the mean of the variable UND475_picker for each group, as defined by group_by().
+#summarise() to perform aggregated operations by group. 
+
+
+
+df$bagain<-ifelse(df$religpew==1 & df$pew_bornagain==1| df$religpew==12 & df$pew_bornagain==1,1,0)
+#1: protestant, 12: something else (There are other religions among evangelical cagegory so religion subset exists)
+
+
+#var_label(df$religpew)    # Shows the label for the gender variable (question text)
+#val_labels(df$religpew)  
+
+#table(df$pew_bornagain, df$religpew)
+
+
+# Convert the 'religpew' column to a factor using the value labels
+#df$religpew_labelled <- to_factor(df$religpew)
+
+# Now create the table using 'pew_bornagain' and the labeled 'religpew' column
+#table(df$pew_bornagain, df$religpew_labelled)
+
+
+
+df$rep<-ifelse(df$pid7>3 & df$pid7<8,1,0)
+#   1 Strong Democrat, 2 Not very strong Democrat, 3 Lean Democrat4 Independent,
+#  4  Independent
+# 5 Lean Republican,  6 Not very strong Republican, 7 Strong Republican
+# 8                   Not sure
+#9                 Don't know
+#    98                    skipped
+#    99                  not asked
+
+unique(df$pid7)
+
+rb<-df%>%
+  filter(rep==1)
+
+
+
+relig_summary <- rb %>% # #63: Null, total=515
+  group_by(UND475_picker) %>%
+  summarise(n = n())
+#1  1 [Version A]   150
+#2  2 [Version B]   155
+#3  3 [Version C]   147
+#4 NA                63
+
+# Display the summary table
+print(relig_summary)
+
+
+#relig_summary <- rb1 %>% # total=424
+  #group_by(UND475_picker) %>%
+#  summarise(n = n())
+#UND475_picker     n
+#<dbl+lbl>     <int>
+#  1 1 [Version A]   143
+#2 2 [Version B]   142
+#3 3 [Version C]   139
+
+# Display the summary table
+print(relig_summary)
+
+
+
+```
+
+
+
+```{r}
+#among republicans
+rb$imm<-ifelse(rb$UND475==1,1, #yes
+               ifelse(rb$UND475==3,.5, #depends
+                      ifelse(rb$UND475==2,0,NA))) #No
+
+
+rb$no_p<-ifelse(rb$UND475_picker==1,1,0)
+rb$pb<-ifelse(rb$UND475_picker==2,1,0)
+rb$pt<-ifelse(rb$UND475_picker==3,1,0)
+
+table(rb$UND475_picker)
+table(rb$no_p)
+table(rb$pb)
+table(rb$pt)
+
+#mean(rb$imm[rb$bagain==1 & rb$pt==1],na.rm=TRUE)
+mean(rb$imm[rb$bagain==0 & rb$pt==1],na.rm=TRUE)
+#
+#mean(rb$imm[rb$bagain==1 & rb$pb==1],na.rm=TRUE)
+#mean(rb$imm[rb$bagain==0 & rb$pb==1],na.rm=TRUE)
+#
+#mean(rb$imm[rb$bagain==1 & rb$no_p==1],na.rm=TRUE)
+#mean(rb$imm[rb$bagain==0 & rb$no_p==1],na.rm=TRUE)
+#
+
+rb1<-rb%>%
+  #rb1 <- rb %>% ...: This line creates a new data frame rb1 from the original data frame rb.
+  dplyr::select(imm,pt,no_p,pb,bagain,UND475_picker)%>%
+  # It selects specific columns (imm, pt, no_p, pb, bagain, UND475_picker) from rb.
+  drop_na()
+  #drop_na(): This function removes any rows that contain NA (missing) values in the selected columns.
+
+
+cond.mean = function(x, indices) {
+  return( mean( x[indices],na.rm=TRUE ) ) }
+# This is a custom function named cond.mean designed to calculate the mean of a vector x at the specified indices
+# x[indices]: This refers to a subset of the vector x based on the provided indices.
+# mean(x[indices], na.rm = TRUE): This calculates the mean of the selected subset while ignoring NA values.
+
+compare<-data.frame(Condition=1:6,Mean=1:6,ci_low=1:6,ci_up=1:6,group=1:6)
+#compare: A data frame named compare is initialized with columns Condition, Mean, ci_low, ci_up, and group, each filled with the numbers 1 to 6.
+#This data frame seems to be a placeholder where you will later store the results of your analysis.
+
+C.boot<-boot(rb1$imm[rb1$pt==1 & rb1$bagain==0],cond.mean,R=1000)
+#C.boot: This stores the results of the bootstrap procedure. It contains the bootstrap samples, the observed mean (t0), and the distribution of bootstrap means.
+
+C.boot1<-boot.ci(C.boot)
+#C.boot1 <- boot.ci(C.boot): This calculates confidence intervals for the bootstrap estimate stored in C.boot. 
+# The boot.ci function provides various types of confidence intervals (e.g., normal, basic, percentile).
+
+#boot(...): This function performs a bootstrap resampling of the data.
+
+#rb1$imm[rb1$pt == 1 & rb1$bagain == 0]: This filters the imm column in rb1 to include only those rows where pt == 1 and bagain == 0.
+#cond.mean: This is the function to be applied to each bootstrap sample. It calculates the mean.
+#R = 1000: This specifies that 1,000 bootstrap samples should be generated.
+
+
+
+compare[5,"Condition"]<- "Trump Prime"
+#This line assigns the value "Trump Prime" to the 5th row in the "Condition" column of the compare data frame.
+#It indicates that the 5th row represents results for a condition labeled "Trump Prime".
+compare[5,"Mean"]<- C.boot$t0
+#C.boot$t0 stores the observed mean from the bootstrap analysis.
+#This line assigns the mean value from the bootstrap analysis (C.boot$t0) to the "Mean" column of the 5th row in the compare data frame.
+
+compare[5,"ci_low"]<- C.boot1$normal[,2]
+#C.boot1 is an object containing the results of the boot.ci() function, which calculates confidence intervals based on the bootstrap results.
+#C.boot1$normal[,2] extracts the lower bound of the confidence interval using the normal approximation.
+#This line assigns this lower confidence interval value to the "ci_low" column of the 5th row in the compare data frame.
+
+compare[5,"ci_up"]<- C.boot1$normal[,3]
+#C.boot1$normal[,3] extracts the upper bound of the confidence interval using the normal approximation.
+#This line assigns this upper confidence interval value to the "ci_up" column of the 5th row in the compare data frame.
+compare[5,"group"]<- "Non-evangelical"
+#This line assigns the value "Non-evangelical" to the "group" column of the 5th row in the compare data frame.
+#This indicates that the 5th row of data is for the "Non-evangelical" group.
+
+C.boot<-boot(rb1$imm[rb1$pt==1 & rb1$bagain==1],cond.mean,R=1000)
+C.boot1<-boot.ci(C.boot)
+
+compare[6,"Condition"]<- "Trump Prime"
+compare[6,"Mean"]<- C.boot$t0
+compare[6,"ci_low"]<- C.boot1$normal[,2]
+compare[6,"ci_up"]<- C.boot1$normal[,3]
+compare[6,"group"]<- "Evangelical"
+
+C.boot<-boot(rb1$imm[rb1$pb==1 & rb1$bagain==0],cond.mean,R=1000)
+C.boot1<-boot.ci(C.boot)
+
+compare[3,"Condition"]<- "Clinton Prime"
+compare[3,"Mean"]<- C.boot$t0
+compare[3,"ci_low"]<- C.boot1$normal[,2]
+compare[3,"ci_up"]<- C.boot1$normal[,3]
+compare[3,"group"]<- "Non-evangelical"
+
+C.boot<-boot(rb1$imm[rb1$pb==1 & rb1$bagain==1],cond.mean,R=1000)
+C.boot1<-boot.ci(C.boot)
+
+compare[4,"Condition"]<- "Clinton Prime"
+compare[4,"Mean"]<- C.boot$t0
+compare[4,"ci_low"]<- C.boot1$normal[,2]
+compare[4,"ci_up"]<- C.boot1$normal[,3]
+compare[4,"group"]<- "Evangelical"
+
+C.boot<-boot(rb1$imm[rb1$no_p==1 & rb1$bagain==0],cond.mean,R=1000)
+C.boot1<-boot.ci(C.boot)
+
+compare[1,"Condition"]<- "No Prime"
+compare[1,"Mean"]<- C.boot$t0
+compare[1,"ci_low"]<- C.boot1$normal[,2]
+compare[1,"ci_up"]<- C.boot1$normal[,3]
+compare[1,"group"]<- "Non-evangelical"
+
+C.boot<-boot(rb1$imm[rb1$no_p==1 & rb1$bagain==1],cond.mean,R=1000)
+C.boot1<-boot.ci(C.boot)
+
+compare[2,"Condition"]<- "No Prime"
+compare[2,"Mean"]<- C.boot$t0
+compare[2,"ci_low"]<- C.boot1$normal[,2]
+compare[2,"ci_up"]<- C.boot1$normal[,3]
+
+
+compare$group<-c("Non-evangelical","Evangelical")
+#compare$group: This refers to the group column in the compare data frame.
+#<- c("Non-evangelical", "Evangelical"): This line assigns the vector c("Non-evangelical", "Evangelical") to the group column.
+
+
+  ggplot(compare,aes(x=Condition,y=Mean,color=group,fill=group))+
+#    compare: The data frame being used to create the plot.
+#    aes(x = Condition, y = Mean, color = group, fill = group): Defines the aesthetics (i.e., mapping data to visual properties):
+#    x = Condition: Plots the Condition column on the x-axis.
+#  y = Mean: Plots the Mean column on the y-axis.
+#  color = group: Assigns different colors to points based on the group column.
+#  fill = group: Assigns different fill colors for the points (if applicable) based on the group column.
+  geom_point(position = position_dodge(width = 0.15))+
+# geom_point(): Adds points to the plot.
+# position = position_dodge(width = 0.15): Adjusts the position of the points slightly on the x-axis to prevent overlap when there are multiple groups (i.e., "Non-evangelical" and "Evangelical").
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_up),position = position_dodge(width = 0.15),width=.25)+
+# aes(ymin = ci_low, ymax = ci_up): Specifies the aesthetics for the error bars, using the ci_low and ci_up columns to define the lower and upper bounds of the confidence intervals.
+# position = position_dodge(width = 0.15): Ensures that the error bars align with the points correctly, given the dodge position.
+# width = .25: Sets the width of the error bars.
+  ylim(.2,.9)+
+#This sets the limits of the y-axis to range from 0.3 to 0.9.
+  xlab("")+
+  ylab("Mean & bootstrapped CI")+
+#xlab(""): Removes the label from the x-axis.
+#ylab("Mean & bootstrapped CI"): Labels the y-axis as "Mean & bootstrapped CI".
+  
+  theme(text = element_text(size = 14), 
+        #  text = element_text(size = 14): Sets the base text size for the plot to 14.        
+        #axis.text.x=element_blank(),
+        #axis.ticks.x=element_blank(),
+        legend.background = element_rect(fill="white"),
+        #Sets the background color of the legend to white.
+        plot.background = element_rect(fill="white"),
+        #Sets the background color of the entire plot to white.
+        panel.background = element_rect(fill="white"),
+        #Sets the background color of the plot panel (where the data is displayed) to white.
+        legend.position="bottom",
+        #Places the legend at the bottom of the plot.       
+        legend.title=element_blank(),
+        #Removes the title from the legend.
+        panel.border = element_rect(color="grey",linewidth=1,fill="transparent"))
+        #: Adds a grey border around the panel with no fill.
+
+
+ 
+```
+
+```{r}
+ #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   #   # 
+  # part two-2: republicans only
+  
+  #df<-read_sav("G:/My Drive/UIUC 2024 Summer/First Year Project/R code/cces18.sav")
+  #df<-read_sav("G:/My Drive/UIUC 2024 Summer/First Year Project/R code/cces18.sav")
+  #write_sav(df, "G:/My Drive/UIUC 2024 Summer/First Year Project/R code/cces18_0902.sav")
+  
+  getwd()
+  
+  df$bagain<-ifelse(df$religpew==1 & df$pew_bornagain==1| df$religpew==12 & df$pew_bornagain==1,1,0)
+  #1: protestant, 12: something else
+  
+  df$rep_only<-ifelse(df$pid7>4 & df$pid7<8,1,0)
+  # 4 Independent,  5 Lean Republican,  6 Not very strong Republican, 7 Strong Republican
+  
+  rb_only<-df%>%
+    filter(rep_only==1)
+  
+  #among republicans
+  rb_only$imm<-ifelse(rb_only$UND475==1,1, #yes
+                 ifelse(rb_only$UND475==3,.5, #depends
+                        ifelse(rb_only$UND475==2,0,NA))) #No
+  
+  
+  rb_only$no_p<-ifelse(rb_only$UND475_picker==1,1,0)
+  rb_only$pb<-ifelse(rb_only$UND475_picker==2,1,0)
+  rb_only$pt<-ifelse(rb_only$UND475_picker==3,1,0)
+  
+  
+  #mean(rb_only$imm[rb_only$bagain==1 & rb_only$pt==1],na.rm=TRUE)
+  mean(rb_only$imm[rb_only$bagain==0 & rb_only$pt==1],na.rm=TRUE)
+  #
+  #mean(rb_only$imm[rb_only$bagain==1 & rb_only$pb==1],na.rm=TRUE)
+  #mean(rb_only$imm[rb_only$bagain==0 & rb_only$pb==1],na.rm=TRUE)
+  #
+  #mean(rb_only$imm[rb_only$bagain==1 & rb_only$no_p==1],na.rm=TRUE)
+  #mean(rb_only$imm[rb_only$bagain==0 & rb_only$no_p==1],na.rm=TRUE)
+  #
+  
+  
+  #################descriptive testing 0910
+  rb1 %>%
+    dplyr::select(pt, no_p, pb, bagain, imm) %>%  # Select bgain as well for filtering
+    filter(bagain == 1) %>%  # Filter rows where bgain == 1
+    describe(fast = TRUE) %>%  # Descriptive statistics with the 'psych' package
+    kable(format = "latex", digits = 2)  # Output in LaTeX format
+  
+  table(rb1$pt, useNA = "ifany")
+  table(rb1$no_p, useNA = "ifany")
+  table(rb1$pb, useNA = "ifany")
+  
+  # Check for missing values in each variable
+  sapply(rb1, function(x) sum(is.na(x)))
+  
+  # Check for complete cases across all selected variables
+  sum(complete.cases(rb1))
+  
+  
+  
+  # Generate descriptive statistics, ignoring missing values for each variable
+  describe(rb1, na.rm = TRUE)
+  
+  
+  rb2 <- rb1 %>%
+    dplyr::select(imm, pt, no_p, pb, bagain)
+  
+  # Get descriptive statistics
+  summary(rb2)
+  
+  table(rb$bagain, rb$UND475_picker)
+```
+
+
+```{r}
+ #################descriptive testing 0910
+  
+  
+  rb_only1<-rb_only%>%
+    #rb1 <- rb %>% ...: This line creates a new data frame rb1 from the original data frame rb.
+    dplyr::select(imm,pt,no_p,pb,bagain,UND475_picker)%>%
+    # It selects specific columns (imm, pt, no_p, pb, bagain, UND475_picker) from rb.
+    drop_na()
+  #drop_na(): This function removes any rows that contain NA (missing) values in the selected columns.
+  
+  
+  cond.mean = function(x, indices) {
+    return( mean( x[indices],na.rm=TRUE ) ) }
+  # This is a custom function named cond.mean designed to calculate the mean of a vector x at the specified indices
+  # x[indices]: This refers to a subset of the vector x based on the provided indices.
+  # mean(x[indices], na.rm = TRUE): This calculates the mean of the selected subset while ignoring NA values.
+  
+  compare<-data.frame(Condition=1:6,Mean=1:6,ci_low=1:6,ci_up=1:6,group=1:6)
+  #compare: A data frame named compare is initialized with columns Condition, Mean, ci_low, ci_up, and group, each filled with the numbers 1 to 6.
+  #This data frame seems to be a placeholder where you will later store the results of your analysis.
+  
+  C.boot<-boot(rb_only1$imm[rb_only1$pt==1 & rb_only1$bagain==0],cond.mean,R=1000)
+  #C.boot: This stores the results of the bootstrap procedure. It contains the bootstrap samples, the observed mean (t0), and the distribution of bootstrap means.
+  
+  C.boot1<-boot.ci(C.boot)
+  #C.boot1 <- boot.ci(C.boot): This calculates confidence intervals for the bootstrap estimate stored in C.boot. 
+  # The boot.ci function provides various types of confidence intervals (e.g., normal, basic, percentile).
+  
+  #boot(...): This function performs a bootstrap resampling of the data.
+  
+  #rb_only1$imm[rb_only1$pt == 1 & rb_only1$bagain == 0]: This filters the imm column in rb_only1 to include only those rows where pt == 1 and bagain == 0.
+  #cond.mean: This is the function to be applied to each bootstrap sample. It calculates the mean.
+  #R = 1000: This specifies that 1,000 bootstrap samples should be generated.
+  
+  
+  
+  compare[5,"Condition"]<- "Trump Prime"
+  #This line assigns the value "Trump Prime" to the 5th row in the "Condition" column of the compare data frame.
+  #It indicates that the 5th row represents results for a condition labeled "Trump Prime".
+  compare[5,"Mean"]<- C.boot$t0
+  #C.boot$t0 stores the observed mean from the bootstrap analysis.
+  #This line assigns the mean value from the bootstrap analysis (C.boot$t0) to the "Mean" column of the 5th row in the compare data frame.
+  
+  compare[5,"ci_low"]<- C.boot1$normal[,2]
+  #C.boot1 is an object containing the results of the boot.ci() function, which calculates confidence intervals based on the bootstrap results.
+  #C.boot1$normal[,2] extracts the lower bound of the confidence interval using the normal approximation.
+  #This line assigns this lower confidence interval value to the "ci_low" column of the 5th row in the compare data frame.
+  
+  compare[5,"ci_up"]<- C.boot1$normal[,3]
+  #C.boot1$normal[,3] extracts the upper bound of the confidence interval using the normal approximation.
+  #This line assigns this upper confidence interval value to the "ci_up" column of the 5th row in the compare data frame.
+  compare[5,"group"]<- "Non-evangelical"
+  #This line assigns the value "Non-evangelical" to the "group" column of the 5th row in the compare data frame.
+  #This indicates that the 5th row of data is for the "Non-evangelical" group.
+  
+  C.boot<-boot(rb_only1$imm[rb_only1$pt==1 & rb_only1$bagain==1],cond.mean,R=1000)
+  C.boot1<-boot.ci(C.boot)
+  
+  compare[6,"Condition"]<- "Trump Prime"
+  compare[6,"Mean"]<- C.boot$t0
+  compare[6,"ci_low"]<- C.boot1$normal[,2]
+  compare[6,"ci_up"]<- C.boot1$normal[,3]
+  compare[6,"group"]<- "Evangelical"
+  
+  C.boot<-boot(rb_only1$imm[rb_only1$pb==1 & rb_only1$bagain==0],cond.mean,R=1000)
+  C.boot1<-boot.ci(C.boot)
+  
+  compare[3,"Condition"]<- "Clinton Prime"
+  compare[3,"Mean"]<- C.boot$t0
+  compare[3,"ci_low"]<- C.boot1$normal[,2]
+  compare[3,"ci_up"]<- C.boot1$normal[,3]
+  compare[3,"group"]<- "Non-evangelical"
+  
+  C.boot<-boot(rb_only1$imm[rb_only1$pb==1 & rb_only1$bagain==1],cond.mean,R=1000)
+  C.boot1<-boot.ci(C.boot)
+  
+  compare[4,"Condition"]<- "Clinton Prime"
+  compare[4,"Mean"]<- C.boot$t0
+  compare[4,"ci_low"]<- C.boot1$normal[,2]
+  compare[4,"ci_up"]<- C.boot1$normal[,3]
+  compare[4,"group"]<- "Evangelical"
+  
+  C.boot<-boot(rb_only1$imm[rb_only1$no_p==1 & rb_only1$bagain==0],cond.mean,R=1000)
+  C.boot1<-boot.ci(C.boot)
+  
+  compare[1,"Condition"]<- "No Prime"
+  compare[1,"Mean"]<- C.boot$t0
+  compare[1,"ci_low"]<- C.boot1$normal[,2]
+  compare[1,"ci_up"]<- C.boot1$normal[,3]
+  compare[1,"group"]<- "Non-evangelical"
+  
+  C.boot<-boot(rb_only1$imm[rb_only1$no_p==1 & rb_only1$bagain==1],cond.mean,R=1000)
+  C.boot1<-boot.ci(C.boot)
+  
+  compare[2,"Condition"]<- "No Prime"
+  compare[2,"Mean"]<- C.boot$t0
+  compare[2,"ci_low"]<- C.boot1$normal[,2]
+  compare[2,"ci_up"]<- C.boot1$normal[,3]
+  
+  
+  compare$group<-c("Non-evangelical","Evangelical")
+  #compare$group: This refers to the group column in the compare data frame.
+  #<- c("Non-evangelical", "Evangelical"): This line assigns the vector c("Non-evangelical", "Evangelical") to the group column.
+  
+  
+  ggplot(compare,aes(x=Condition,y=Mean,color=group,fill=group))+
+    #    compare: The data frame being used to create the plot.
+    #    aes(x = Condition, y = Mean, color = group, fill = group): Defines the aesthetics (i.e., mapping data to visual properties):
+    #    x = Condition: Plots the Condition column on the x-axis.
+    #  y = Mean: Plots the Mean column on the y-axis.
+    #  color = group: Assigns different colors to points based on the group column.
+    #  fill = group: Assigns different fill colors for the points (if applicable) based on the group column.
+    geom_point(position = position_dodge(width = 0.15))+
+    # geom_point(): Adds points to the plot.
+    # position = position_dodge(width = 0.15): Adjusts the position of the points slightly on the x-axis to prevent overlap when there are multiple groups (i.e., "Non-evangelical" and "Evangelical").
+    geom_errorbar(aes(ymin = ci_low, ymax = ci_up),position = position_dodge(width = 0.15),width=.25)+
+    # aes(ymin = ci_low, ymax = ci_up): Specifies the aesthetics for the error bars, using the ci_low and ci_up columns to define the lower and upper bounds of the confidence intervals.
+    # position = position_dodge(width = 0.15): Ensures that the error bars align with the points correctly, given the dodge position.
+    # width = .25: Sets the width of the error bars.
+    ylim(.2,.9)+
+    #This sets the limits of the y-axis to range from 0.3 to 0.9.
+    xlab("")+
+    ylab("Mean & bootstrapped CI")+
+    #xlab(""): Removes the label from the x-axis.
+    #ylab("Mean & bootstrapped CI"): Labels the y-axis as "Mean & bootstrapped CI".
+    
+    theme(text = element_text(size = 14), 
+          #  text = element_text(size = 14): Sets the base text size for the plot to 14.        
+          #axis.text.x=element_blank(),
+          #axis.ticks.x=element_blank(),
+          legend.background = element_rect(fill="white"),
+          #Sets the background color of the legend to white.
+          plot.background = element_rect(fill="white"),
+          #Sets the background color of the entire plot to white.
+          panel.background = element_rect(fill="white"),
+          #Sets the background color of the plot panel (where the data is displayed) to white.
+          legend.position="bottom",
+          #Places the legend at the bottom of the plot.       
+          legend.title=element_blank(),
+          #Removes the title from the legend.
+          panel.border = element_rect(color="grey",linewidth=1,fill="transparent"))
+  #: Adds a grey border around the panel with no fill.
+  
+```
+
+
+
+
+```{r}
+  ###########################################descriptive statistics 0906
+  
+  rb1 %>%
+ dplyr::select(no_p,pb,pt,imm,bagain)%>%
+ #filter(bagain == 0) %>%  # Filter rows where bgain == 1
+  describe(fast = TRUE) %>%  # Descriptive statistics with the 'psych' package
+  kable(format = "latex", digits = 2)  # Output in LaTeX format
+  
+  rb1 %>%
+    dplyr::select(no_p,pb,pt,imm,bagain)%>%
+    filter(bagain == 1) %>%  # Filter rows where bgain == 1
+    describe(fast = TRUE) %>%  # Descriptive statistics with the 'psych' package
+    kable(format = "latex", digits = 2)  # Output in LaTeX format
+  ###########################################descriptive statistics
+  
+rb1%>%
+dplyr::select(no_p,pb,pt,imm,bagain)%>%
+#filter(bagain==1)%>%
+describe(.,fast=TRUE)%>%
+kable(.,format="latex",digits=2)
+#dplyr::select(no_p, pb, pt, imm, bagain): Selects specific columns (no_p, pb, pt, imm, bagain) from the rb1 data frame.
+#filter(bagain == 1): Filters the dataset to include only rows where bagain == 1, indicating Evangelicals.
+#describe(., fast = TRUE): Generates descriptive statistics (mean, standard deviation, etc.) for the selected columns. The fast = TRUE option speeds up the computation by limiting the output to a few key statistics.
+#kable(., format = "latex", digits = 2): Formats the output as a LaTeX table with two decimal places.
+
+
+rb1%>%
+  dplyr::select(no_p,pb,pt,imm,bagain)%>%
+  filter(bagain==0)%>%
+  describe(.,fast=TRUE)%>%
+  kable(.,format="latex",digits=2)
+
+
+rb1%>%
+ group_by(UND475_picker,bagain)%>%
+ summarize(imm_mean=mean(imm),
+           imm_sd=sd(imm),
+           n=n())%>%
+kable(.,format="latex",digits=2)
+
+
+
+#group_by(UND475_picker, bagain): Groups the data by the UND475_picker and bagain variables. This creates subgroups based on combinations of these two variables.
+#summarize(...): For each group, this calculates:
+#  imm_mean = mean(imm): The mean of the imm variable.
+#imm_sd = sd(imm): The standard deviation of the imm variable.
+#n = n(): The number of observations in each group.
+#kable(., format = "latex", digits = 2): Formats the summarized data as a LaTeX table with two decimal places.
+
+
+
+
+
+
+
+####################################################################################
+
+
+
+```
+
+
+
+
+```{r}
+#Linear Graph of Evan and Non-evans for Immorality among Rep and Inde
+#```{r}
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+#install.packages("patchwork")
+
+# Data preparation for Evangelicals
+evangelicals_df <- rb %>%
+  filter(bagain == 1 & !is.na(imm)) %>%
+  group_by(UND475_picker) %>%
+  summarise(mean_immo = mean(imm, na.rm = TRUE)) %>%
+  mutate(Group = "Evangelicals")
+
+# Data preparation for Non-Evangelicals
+non_evangelicals_df <- rb %>%
+  filter(bagain == 0 & !is.na(imm)) %>%
+  group_by(UND475_picker) %>%
+  summarise(mean_immo = mean(imm, na.rm = TRUE)) %>%
+  mutate(Group = "Non-Evangelicals")
+
+# Combine data for both groups
+combined_df <- bind_rows(evangelicals_df, non_evangelicals_df)
+
+# Convert UND475_picker to a factor with meaningful labels
+combined_df <- combined_df %>%
+  mutate(UND475_picker = factor(UND475_picker, 
+                                levels = c("1", "2", "3"),
+                                labels = c("Without Priming", "Primed with Bill Clinton", "Primed with Trump")))
+
+# Plot the line graph with mean values displayed
+final_plot <- ggplot(combined_df, aes(x = UND475_picker, y = mean_immo, group = Group, color = Group)) +
+  geom_line(size = 1) +  # Add lines for each group
+  geom_point(size = 3) +  # Add points for clarity
+  geom_text(aes(label = round(mean_immo, 2)), vjust = -1, size = 3) +  # Display mean values above points
+  labs(title = "Immorality among Republicans and Independents in 2018",
+       x = "Priming Condition", y = "Immorality") +  # Axis labels
+  scale_color_manual(name = "Group", values = c("Evangelicals" = "red", "Non-Evangelicals" = "blue")) +
+  theme_minimal() +
+  theme(legend.position = "bottom",  
+        axis.title = element_text(size = 12, face = "bold"),  # Bold axis labels
+        plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, size = 14)) +
+  annotate("text", x = 0.1, y = 0.1, label = "0: Not-tolerating", size = 3, hjust = 0, vjust = 1, color = "darkgrey") +
+  annotate("text", x = 0.1, y = 0.9, label = "1: Tolerating", size = 3, hjust = 0, vjust = 1, color = "darkgrey")
+
+# Display the final plot
+final_plot
+
+
+
+```
+
+
+
+```{r}
+##############################################################################
+#Linear Graph of Evan and Non-evans for Immorality among Rep
+
+# Data preparation for Evangelicals
+evangelicals_df <- rb_only %>%
+  filter(bagain == 1 & !is.na(imm)) %>%
+  group_by(UND475_picker) %>%
+  summarise(mean_immo = mean(imm, na.rm = TRUE)) %>%
+  mutate(Group = "Evangelicals")
+
+# Data preparation for Non-Evangelicals
+non_evangelicals_df <- rb_only %>%
+  filter(bagain == 0 & !is.na(imm)) %>%
+  group_by(UND475_picker) %>%
+  summarise(mean_immo = mean(imm, na.rm = TRUE)) %>%
+  mutate(Group = "Non-Evangelicals")
+
+# Combine data for both groups
+combined_df <- bind_rows(evangelicals_df, non_evangelicals_df)
+
+# Convert UND475_picker to a factor with meaningful labels
+combined_df <- combined_df %>%
+  mutate(UND475_picker = factor(UND475_picker, 
+                                levels = c("1", "2", "3"),
+                                labels = c("Without Priming", "Primed with Bill Clinton", "Primed with Trump")))
+
+# Plot the line graph with mean values displayed
+final_plot <- ggplot(combined_df, aes(x = UND475_picker, y = mean_immo, group = Group, color = Group)) +
+  geom_line(size = 1) +  # Add lines for each group
+  geom_point(size = 3) +  # Add points for clarity
+  geom_text(aes(label = round(mean_immo, 2)), vjust = -1, size = 3) +  # Display mean values above points
+  labs(title = "Immorality among Republicans in 2018",
+       x = "Priming Condition", y = "Immorality") +  # Axis labels
+  scale_color_manual(name = "Group", values = c("Evangelicals" = "red", "Non-Evangelicals" = "blue")) +
+  theme_minimal() +
+  theme(legend.position = "bottom",  
+        axis.title = element_text(size = 12, face = "bold"),  # Bold axis labels
+        plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, size = 14)) +
+  annotate("text", x = 0.1, y = 0.1, label = "0: Not-tolerating", size = 3, hjust = 0, vjust = 1, color = "darkgrey") +
+  annotate("text", x = 0.1, y = 0.9, label = "1: Tolerating", size = 3, hjust = 0, vjust = 1, color = "darkgrey")
+
+# Display the final plot
+final_plot
+
+#####################################################################
+
+
+
+
+
+
+
+```
+
+
+
+```{r}
+#Immorality Histogram among Republicans and Independents (0828)
+
+
+
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+# Data preparation for Repu and Independents 
+
+evangelicals_df <- rb %>%
+  filter(!is.na(imm)) %>%
+  mutate(UND475_picker = factor(UND475_picker, 
+                                levels = c("1", "2", "3"),
+                                labels = c("Without Priming", "Primed with Bill Clinton", "Primed with Trump")))
+
+mean_immo_df_evangelicals <- evangelicals_df %>%
+  group_by(UND475_picker) %>%
+  summarise(Immorality = mean(as.numeric(imm), na.rm = TRUE))
+
+mean_immo_df_evangelicals
+
+
+# Plot for Evangelicals with mean numbers displayed
+plot_evangelicals <- ggplot(mean_immo_df_evangelicals, aes(x = UND475_picker, y = Immorality, fill = UND475_picker)) +
+  geom_bar(stat = "identity", width = 0.5) +  
+  geom_text(aes(label = round(Immorality, 2)), vjust = -0.3, size = 3) +  # Add mean numbers on top of bars
+  scale_fill_manual(name = "Version",  
+                    values = c("Without Priming" = "gray", 
+                               "Primed with Bill Clinton" = "blue", 
+                               "Primed with Trump" = "red")) +
+  scale_y_continuous(breaks = seq(0, 2, by = 0.5),  
+                     limits = c(0, 1)) +  
+  labs(subtitle = "Republicans and Independents", y = "Immorality") +  # Add subtitle and Y-axis label
+  theme_minimal() +
+  theme(legend.position = "bottom",  
+        axis.title.x = element_blank(),  
+        axis.text.x = element_blank(),   
+        axis.title.y = element_text(size = 12, face = "bold"),  # Make Y-axis label bold
+        plot.subtitle = element_text(hjust = 0.5, size = 12, face = "bold"),  
+        axis.ticks.x = element_blank(),  
+        axis.ticks.length = unit(-0.25, "cm"),  
+        panel.grid.minor = element_blank(),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10)) +  # Reduce top margin
+  annotate("text", x = 0.1, y = 0.1, label = "1: Not-tolerating", size = 2, hjust = 0, vjust = 1, color="darkgrey") +
+  annotate("text", x = 0.1, y = 0.9, label = "2: Tolerating", size = 2, hjust = 0, vjust = 1, color="darkgrey")
+
+# Data preparation for Republicans
+non_evangelicals_df <- rb_only %>%
+  filter(!is.na(imm)) %>%
+  mutate(UND475_picker = factor(UND475_picker, 
+                                levels = c("1", "2", "3"),
+                                labels = c("Without Priming", "Primed with Bill Clinton", "Primed with Trump")))
+
+mean_immo_df_non_evangelicals <- non_evangelicals_df %>%
+  group_by(UND475_picker) %>%
+  summarise(Immorality = mean(as.numeric(imm), na.rm = TRUE))
+
+mean_immo_df_non_evangelicals
+
+# Plot for Non-Evangelicals with mean numbers displayed
+plot_non_evangelicals <- ggplot(mean_immo_df_non_evangelicals, aes(x = UND475_picker, y = Immorality, fill = UND475_picker)) +
+  geom_bar(stat = "identity", width = 0.5) +  
+  geom_text(aes(label = round(Immorality, 2)), vjust = -0.3, size = 3) +  # Add mean numbers on top of bars
+  scale_fill_manual(name = "Version",  
+                    values = c("Without Priming" = "gray", 
+                               "Primed with Bill Clinton" = "blue", 
+                               "Primed with Trump" = "red")) +
+  scale_y_continuous(breaks = seq(0, 2, by = 0.5),  
+                     limits = c(0, 1)) +  
+  labs(subtitle = "Republicans", y = "Immorality") +  # Add subtitle and Y-axis label
+  theme_minimal() +
+  theme(legend.position = "bottom",  
+        axis.title.x = element_blank(),  
+        axis.text.x = element_blank(),   
+        axis.title.y = element_text(size = 12, face = "bold"),  # Make Y-axis label bold
+        plot.subtitle = element_text(hjust = 0.5, size = 12, face = "bold"),  
+        axis.ticks.x = element_blank(),  
+        axis.ticks.length = unit(-0.25, "cm"),  
+        panel.grid.minor = element_blank(),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10)) +  # Reduce top margin
+  annotate("text", x = 0.1, y = 0.1, label = "1: Not-tolerating", size = 2, hjust = 0, vjust = 1, color="darkgrey") +
+  annotate("text", x = 0.1, y = 0.9, label = "2: Tolerating", size = 2, hjust = 0, vjust = 1, color="darkgrey")
+
+# Combine plots
+combined_plot <- plot_evangelicals + plot_non_evangelicals + 
+  plot_layout(ncol = 2)
+
+# Add central title, subtitle, and axis labels
+final_plot <- combined_plot + 
+  plot_annotation(
+    title = "Immorality Tolerance by Party Identity in 2018",
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, size = 15, face = "bold", margin = margin(b = 5))  # Reduce bottom margin
+    )
+  ) & 
+  plot_annotation(
+    caption = "Priming Effect",
+    theme = theme(plot.caption = element_text(hjust = 0.5, size = 12, face = "bold"))
+  ) 
+
+# Display the final plot
+final_plot + 
+  plot_layout(guides = 'collect') & 
+  theme(legend.position = "bottom")
+```
+
+
+
+```{r}
+###################################################################
+#historgams for evans
+
+#merged_df <- read_csv("G:/My Drive/UIUC 2024 Summer/First Year Project/R code/merged_dataset_0830.csv")
+merged_df <- read_csv("/Users/yeowonlim/Library/CloudStorage/GoogleDrive-yeowonl2@illinois.edu/My Drive/UIUC 2024 Summer/First Year Project/R code/merged_dataset_0830.csv")
+
+
+table(merged_df$tmyear, merged_df$merged_bornagain_forrg) #1: yes, 2: no
+table(merged_df$tmyear, merged_df$party_identity_2) #1: Demo 2: Repu 3: Indep 
+table(merged_df$tmyear, merged_df$party)
+# Load the necessary packages
+library(ggplot2)
+library(dplyr)
+
+
+# Filter the dataset to include only Evangelicals
+evangelicals_df <- merged_df %>% 
+  filter(merged_bornagain_forrg == 1) %>%
+  group_by(tmyear, party_identity_2) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Ensure party_identity_2 is a factor and specify the order
+evangelicals_df$party_identity_2 <- factor(evangelicals_df$party_identity_2,
+                                           levels = c("1", "2", "3", "99"))
+
+# Create the faceted histogram showing percentages with no space between bars
+ggplot(evangelicals_df, aes(x = party_identity_2, y = percentage, fill = party_identity_2)) +
+  geom_col(width = 0.7) +  # Use geom_col() with width = 1 to fill the entire space
+  facet_wrap(~ tmyear, ncol = 2) +
+  labs(title = "Party Identity among Evangelicals by Year",
+       x = "Party Identity",
+       y = "Percentage") +
+  scale_x_discrete(labels = c("1" = "Democrat", "2" = "Republican", "3" = "Independent", "99" = "Others")) +
+  scale_fill_manual(values = c("1" = "blue", "2" = "red", "3" = "green", "99" = "grey"),
+                    labels = c("Democrat", "Republican", "Independent", "Others"),
+                    name = "Party Identity") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.grid.major.x = element_blank(), # Remove vertical grid lines
+        panel.grid.minor.x = element_blank(), # Remove minor vertical grid lines
+        plot.title = element_text(hjust = 0.5), # Center the plot title
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10, unit = "pt"), # Center the entire plot
+        axis.text.x = element_text(hjust = 0.5, vjust = 0.5), # Center the x-axis labels
+        strip.text = element_text(hjust = 0.5)) # Center facet labels
+```
+
+
+
+```{r}
+#histogram for non-evans
+
+
+# Load the necessary packages
+library(ggplot2)
+library(dplyr)
+
+# Filter the dataset to include only Evangelicals
+evangelicals_df <- merged_df %>% 
+  filter(merged_bornagain_forrg == 0) %>%
+  group_by(tmyear, party_identity_2) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Ensure party_identity_2 is a factor and specify the order
+evangelicals_df$party_identity_2 <- factor(evangelicals_df$party_identity_2,
+                                           levels = c("1", "2", "3", "99"))
+
+# Create the faceted histogram showing percentages with no space between bars
+ggplot(evangelicals_df, aes(x = party_identity_2, y = percentage, fill = party_identity_2)) +
+  geom_col(width = 0.7) +  # Use geom_col() with width = 1 to fill the entire space
+  facet_wrap(~ tmyear, ncol = 2) +
+  labs(title = "Party Identity among Non-Evangelicals by Year",
+       x = "Party Identity",
+       y = "Percentage") +
+  scale_x_discrete(labels = c("1" = "Democrat", "2" = "Republican", "3" = "Independent", "99" = "Others")) +
+  scale_fill_manual(values = c("1" = "blue", "2" = "red", "3" = "green", "99" = "grey"),
+                    labels = c("Democrat", "Republican", "Independent", "Others"),
+                    name = "Party Identity") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.grid.major.x = element_blank(), # Remove vertical grid lines
+        panel.grid.minor.x = element_blank(), # Remove minor vertical grid lines
+        plot.title = element_text(hjust = 0.5), # Center the plot title
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10, unit = "pt"), # Center the entire plot
+        axis.text.x = element_text(hjust = 0.5, vjust = 0.5), # Center the x-axis labels
+        strip.text = element_text(hjust = 0.5)) # Center facet labels
+```
+
+
