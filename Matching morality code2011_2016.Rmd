@@ -1,0 +1,1269 @@
+---
+title: "Quant2_Final Paper_Code"
+output: html_document
+date: "2024-12-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+```{r}
+
+
+#install.packages("corrplot")
+#install.packages("tableone")
+
+library(marginaleffects)
+library(tidyverse)
+library(haven)
+library(estimatr)
+
+library(MatchIt)
+library(dplyr)
+library(cobalt)
+library(optmatch)
+library(ggplot2)
+library(corrplot)
+library(tableone)
+library(car)  # for recoding
+
+```
+
+
+```{r}
+rm(list=ls())
+
+dt11<-read_dta("G:/My Drive/UIUC 2024 Summer/First Year Project/R code/prri_2011.DTA")
+dt16<-read_dta("G:/My Drive/UIUC 2024 Summer/First Year Project/R code/prri_2016.DTA")
+
+
+
+# View labels for all variables in dt11
+#lapply(dt11, attr, "labels")
+
+# Example: View labels for a specific variable in dt11
+attr(dt11$income, "labels")
+
+# View labels for all variables in dt16
+#lapply(dt16, attr, "labels")
+
+# Example: View labels for a specific variable in dt16
+attr(dt16$income, "labels")
+
+
+```
+
+
+
+Variable name and scale mapping
+```{r}
+
+# Function to standardize variables across years
+standardize_variables <- function(dt11, dt16) {
+  
+  # Verification function
+  verify_standardization <- function(dt11, dt16) {
+    vars_to_check <- c("rep", "dem", "ind", "imm", "bgain", 
+                      "education", "year", "male")
+    
+    for(var in vars_to_check) {
+      cat("\nChecking", var, ":\n")
+      cat("2011 levels:", unique(dt11[[var]]), "\n")
+      cat("2016 levels:", unique(dt16[[var]]), "\n")
+    }
+  }
+  
+  # Party identification function
+  create_party_vars <- function(df, party_var, partyln_var) {
+    df <- df %>%
+      mutate(
+        rep = ifelse(!!sym(party_var) == 1 | !!sym(partyln_var) == 1, 1, 0),
+        dem = ifelse(!!sym(party_var) == 2 | !!sym(partyln_var) == 2, 1, 0),
+        ind = ifelse(rep == 0 & dem == 0 & !!sym(party_var) == 3, 1, 0)
+      )
+    return(df)
+  }
+  
+  # Morality function
+  standardize_morality <- function(df, moral_var) {
+    df %>%
+      mutate(
+        imm = case_when(
+          !!sym(moral_var) == 1 ~ 1,
+          !!sym(moral_var) == 2 ~ 0,
+          !!sym(moral_var) %in% c(3, 98) ~ 0.5,
+          TRUE ~ NA_real_
+        )
+      ) %>%
+      return()
+  }
+  
+  # Born again function
+  standardize_born_again <- function(df) {
+    df %>%
+      mutate(
+        bgain = ifelse(is.na(born), 0,
+                      ifelse(born == 1, 1, 0))
+      )
+  }
+  
+  # Age categories function
+  standardize_age <- function(df, is_2016 = FALSE) {
+    if(is_2016) {
+      df %>%
+        mutate(age_cat = case_when(
+          age >= 18 & age <= 20 ~ 1,
+          age >= 21 & age <= 24 ~ 2,
+          age >= 25 & age <= 29 ~ 3,
+          age >= 30 & age <= 34 ~ 4,
+          age >= 35 & age <= 39 ~ 5,
+          age >= 40 & age <= 44 ~ 6,
+          age >= 45 & age <= 49 ~ 7,
+          age >= 50 & age <= 54 ~ 8,
+          age >= 55 & age <= 59 ~ 9,
+          age >= 60 & age <= 64 ~ 10,
+          age >= 65 & age <= 69 ~ 11,
+          age >= 70 & age <= 74 ~ 12,
+          age >= 75 ~ 13,
+          TRUE ~ NA_real_
+        ))
+    } else {
+      df %>% mutate(age_cat = age) 
+    }
+  }
+  
+  # Education function
+  standardize_education <- function(df, year) {
+    if(year == 2011) {
+      df %>%
+        mutate(
+          education = case_when(
+            educ <= 2 ~ 1,  # Less than HS
+            educ == 3 ~ 2,  # HS complete
+            educ == 4 ~ 3,  # Some college
+            educ %in% c(5,6) ~ 4, # College grad
+            educ >= 7 ~ 5,  # Post-grad
+            TRUE ~ NA_real_
+          )
+        )
+    } else {
+      df %>%
+        mutate(
+          education = case_when(
+            educ == 1 ~ 1,  # Less than HS
+            educ == 2 ~ 2,  # HS complete
+            educ == 3 ~ 3,  # Some college
+            educ %in% c(4,6) ~ 4, # College grad
+            educ >= 5 ~ 5,  # Post-grad
+            TRUE ~ NA_real_
+          )
+        )
+    }
+  }
+  
+  # Apply standardizations
+  dt11_std <- dt11 %>%
+    create_party_vars("party", "partyln") %>%
+    standardize_morality("privpub") %>%
+    standardize_born_again() %>%
+    standardize_age() %>%
+    standardize_education(2011) %>%
+    mutate(
+      year = 0,
+      male = ifelse(sex == 1, 1, 0)
+    )
+  
+  dt16_std <- dt16 %>%
+    create_party_vars("party", "partyln") %>%
+    standardize_morality("Q8") %>%
+    standardize_born_again() %>%
+    standardize_age(is_2016 = TRUE) %>%
+    standardize_education(2016) %>%
+    mutate(
+      year = 1,
+      male = ifelse(sex == 1, 1, 0)
+    )
+  
+  # Verify the imm variable is present
+  cat("Checking for imm variable:\n")
+  cat("2011 imm present:", "imm" %in% names(dt11_std), "\n")
+  cat("2016 imm present:", "imm" %in% names(dt16_std), "\n")
+  
+  # Run verification
+  verify_standardization(dt11_std, dt16_std)
+  
+  return(list(
+    data_2011 = dt11_std,
+    data_2016 = dt16_std
+  ))
+}
+
+# Apply standardization
+standardized_data <- standardize_variables(dt11, dt16)
+
+
+
+# Check variables in standardized datasets
+names(standardized_data$data_2011)
+names(standardized_data$data_2016)
+
+# Verify they're the same
+#all.equal(names(standardized_data$data_2011),
+#          names(standardized_data$data_2016))
+
+# Check structure of both datasets
+#str(standardized_data$data_2011)
+#str(standardized_data$data_2016)
+
+
+
+```
+
+
+
+Propensity score
+: calculate propensity scores to ensure that similar evangelical and non-evangelical Republicans are compared
+
+```{r}
+
+  # Using ggplot2
+library(ggplot2)
+library(gridExtra)
+
+
+# Function to calculate propensity scores
+calculate_ps <- function(data_2011, data_2016) {
+  
+  # Prepare data function with complete.cases
+  prepare_data <- function(data) {
+    clean_data <- data %>%
+      select(bgain, rep, age_cat, education, male, imm) %>%  # Add imm here
+      filter(complete.cases(.)) %>%
+      mutate(
+        age_cat = ordered(age_cat, levels = 1:13),
+        education = ordered(education, levels = 1:5),
+        male = as.numeric(male),
+        rep = as.numeric(rep),
+        bgain = as.numeric(bgain)
+      )
+    return(clean_data)
+  }
+  
+  # Clean data
+  data_2011_clean <- prepare_data(data_2011)
+  data_2016_clean <- prepare_data(data_2016)
+  
+  # Print observations
+  cat("Number of observations:\n")
+  cat("2011: Original =", nrow(data_2011), "Clean =", nrow(data_2011_clean), "\n")
+  cat("2016: Original =", nrow(data_2016), "Clean =", nrow(data_2016_clean), "\n\n")
+  
+  # Calculate PS with only complete cases
+  ps_model_2011 <- glm(bgain ~ rep + age_cat + education + male,
+                       family = binomial(link = "logit"),
+                       data = data_2011_clean)
+  
+  ps_model_2016 <- glm(bgain ~ rep + age_cat + education + male,
+                       family = binomial(link = "logit"),
+                       data = data_2016_clean)
+  
+  # Add PS scores with error checking
+  tryCatch({
+    # Add predictions
+    data_2011_clean <- data_2011_clean %>%
+      mutate(ps_score = predict(ps_model_2011, newdata = data_2011_clean, type = "response"))
+    
+    data_2016_clean <- data_2016_clean %>%
+      mutate(ps_score = predict(ps_model_2016, newdata = data_2016_clean, type = "response"))
+    
+    # Verify predictions worked
+    cat("\nNumber of PS scores:\n")
+    cat("2011:", sum(!is.na(data_2011_clean$ps_score)), "\n")
+    cat("2016:", sum(!is.na(data_2016_clean$ps_score)), "\n\n")
+    
+  }, error = function(e) {
+    cat("Error in prediction:", e$message, "\n")
+  })
+  
+  # Print model summaries
+  cat("2011 Model Summary:\n")
+  print(summary(ps_model_2011)$coefficients)
+  cat("\n2016 Model Summary:\n")
+  print(summary(ps_model_2016)$coefficients)
+  
+
+
+# 2011 plots
+p1_2011 <- ggplot(data_2011_clean, aes(x = factor(male), y = ps_score)) +
+  geom_boxplot() +
+  labs(title = "2011 PS by Gender", x = "Gender", y = "Propensity Score") +
+  scale_x_discrete(labels = c("Female", "Male"))
+
+p2_2011 <- ggplot(data_2011_clean, aes(x = factor(rep), y = ps_score)) +
+  geom_boxplot() +
+  labs(title = "2011 PS by Republican", x = "Republican", y = "Propensity Score") +
+  scale_x_discrete(labels = c("Non-Rep", "Rep"))
+
+p3_2011 <- ggplot(data_2011_clean, aes(x = as.numeric(age_cat), y = ps_score)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(title = "2011 PS by Age Category", x = "Age Category", y = "Propensity Score")
+
+p4_2011 <- ggplot(data_2011_clean, aes(x = as.numeric(education), y = ps_score)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(title = "2011 PS by Education", x = "Education Level", y = "Propensity Score")
+
+# 2016 plots
+p1_2016 <- ggplot(data_2016_clean, aes(x = factor(male), y = ps_score)) +
+  geom_boxplot() +
+  labs(title = "2016 PS by Gender", x = "Gender", y = "Propensity Score") +
+  scale_x_discrete(labels = c("Female", "Male"))
+
+p2_2016 <- ggplot(data_2016_clean, aes(x = factor(rep), y = ps_score)) +
+  geom_boxplot() +
+  labs(title = "2016 PS by Republican", x = "Republican", y = "Propensity Score") +
+  scale_x_discrete(labels = c("Non-Rep", "Rep"))
+
+p3_2016 <- ggplot(data_2016_clean, aes(x = as.numeric(age_cat), y = ps_score)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(title = "2016 PS by Age Category", x = "Age Category", y = "Propensity Score")
+
+p4_2016 <- ggplot(data_2016_clean, aes(x = as.numeric(education), y = ps_score)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(title = "2016 PS by Education", x = "Education Level", y = "Propensity Score")
+
+# Arrange plots for both years
+# 2011 plots
+grid.arrange(p1_2011, p2_2011, p3_2011, p4_2011, 
+             ncol = 2, 
+             top = "2011 Propensity Score Analysis")
+
+# 2016 plots
+grid.arrange(p1_2016, p2_2016, p3_2016, p4_2016, 
+             ncol = 2, 
+             top = "2016 Propensity Score Analysis")
+
+# Optional: Compare years side by side for each variable
+# Gender comparison
+grid.arrange(p1_2011, p1_2016, 
+             ncol = 2, 
+             top = "Gender Comparison: 2011 vs 2016")
+
+# Republican comparison
+grid.arrange(p2_2011, p2_2016, 
+             ncol = 2, 
+             top = "Republican Comparison: 2011 vs 2016")
+
+# Age comparison
+grid.arrange(p3_2011, p3_2016, 
+             ncol = 2, 
+             top = "Age Category Comparison: 2011 vs 2016")
+
+# Education comparison
+grid.arrange(p4_2011, p4_2016, 
+             ncol = 2, 
+             top = "Education Comparison: 2011 vs 2016")
+  
+  return(list(
+    data_2011 = data_2011_clean,
+    data_2016 = data_2016_clean,
+    model_2011 = ps_model_2011,
+    model_2016 = ps_model_2016,
+    n_2011 = nrow(data_2011_clean),
+    n_2016 = nrow(data_2016_clean)
+  ))
+}
+
+# Run the function
+ps_results <- calculate_ps(standardized_data$data_2011, 
+                          standardized_data$data_2016)
+```
+
+Variables matched on: 
+
+1) Exact Matching on rep:
+Highly significant in both years (p < 0.001)
+Large effect sizes (2011: β = 0.880, 2016: β = 0.850)
+Very consistent between years
+
+2) Coarsened Matching on age_cat and education: group similar values together to make matching easier
+- age_cat: 
+Significant linear trend in 2016 (p = 0.001)
+Marginally significant in 2011 (p = 0.082)
+Different patterns between years suggest importance of controlling for age
+
+- education:
+Significant in 2011 (Linear: p = 0.028, Quadratic: p = 0.004)
+Not significant in 2016 but shows similar direction
+Important for demographic control
+
+
+
+```{r}
+# Get the cleaned data from ps_results
+data_2011_clean <- ps_results$data_2011
+data_2016_clean <- ps_results$data_2016
+
+# Age distribution
+cat("Age Category Distribution:\n")
+cat("\n2011:\n")
+print(table(data_2011_clean$age_cat))
+cat("\n2016:\n")
+print(table(data_2016_clean$age_cat))
+
+# Education distribution
+cat("\nEducation Distribution:\n")
+cat("\n2011:\n")
+print(table(data_2011_clean$education))
+cat("\n2016:\n")
+print(table(data_2016_clean$education))
+
+# Optional: Visual representation
+par(mfrow=c(2,2))
+
+# Age distributions
+barplot(table(data_2011_clean$age_cat), 
+        main="2011 Age Distribution",
+        xlab="Age Category")
+barplot(table(data_2016_clean$age_cat), 
+        main="2016 Age Distribution",
+        xlab="Age Category")
+
+# Education distributions
+barplot(table(data_2011_clean$education), 
+        main="2011 Education Distribution",
+        xlab="Education Level")
+barplot(table(data_2016_clean$education), 
+        main="2016 Education Distribution",
+        xlab="Education Level")
+```
+
+First -> Exact match on rep (Republican status)
+Second -> Match within same education group (Low/Middle)
+Third -> Match within same age group (Mid to Older)
+
+
+exact matching on rep, edu and age
+```{r}
+create_exact_matched_set <- function(data_2011, data_2016) {
+  # Print initial sample sizes
+  cat("Initial sample sizes:\n")
+  cat("2011 total:", nrow(data_2011), "\n")
+  cat("2016 total:", nrow(data_2016), "\n\n")
+  
+  # Match on BOTH education AND age groups
+  matched_2011 <- data_2011 %>%
+    filter(rep == 1,  # Republicans only
+           education %in% 2:4) %>%  # Education levels 2-4
+    select(education, age_cat, bgain, imm, rep) %>%  # Keep necessary variables
+    mutate(
+      age_group = case_when(
+        as.numeric(age_cat) <= 8 ~ "Middle (7-8)",
+        as.numeric(age_cat) <= 10 ~ "Young-Old (9-10)",
+        TRUE ~ "Old (11-13)"
+      )
+    )
+  
+  matched_2016 <- data_2016 %>%
+    filter(rep == 1,  # Republicans only
+           education %in% 2:4) %>%  # Education levels 2-4
+    select(education, age_cat, bgain, imm, rep) %>%  # Keep necessary variables
+    mutate(
+      age_group = case_when(
+        as.numeric(age_cat) <= 8 ~ "Middle (7-8)",
+        as.numeric(age_cat) <= 10 ~ "Young-Old (9-10)",
+        TRUE ~ "Old (11-13)"
+      )
+    )
+  
+  # Calculate minimum sample sizes for each education-age combination
+  combinations <- expand.grid(
+    education = 2:4,
+    age_group = c("Middle (7-8)", "Young-Old (9-10)", "Old (11-13)")
+  )
+  
+  sample_sizes <- data.frame(
+    education = combinations$education,
+    age_group = combinations$age_group,
+    n_2011 = NA,
+    n_2016 = NA
+  )
+  
+  # Get sample sizes for each combination
+  for(i in 1:nrow(sample_sizes)) {
+    sample_sizes$n_2011[i] <- sum(matched_2011$education == sample_sizes$education[i] & 
+                                 matched_2011$age_group == sample_sizes$age_group[i])
+    sample_sizes$n_2016[i] <- sum(matched_2016$education == sample_sizes$education[i] & 
+                                 matched_2016$age_group == sample_sizes$age_group[i])
+  }
+  
+  # Calculate minimum sizes
+  sample_sizes$n_min <- pmin(sample_sizes$n_2011, sample_sizes$n_2016)
+  
+  # Sample within each education-age combination
+  matched_2011_final <- do.call(rbind, lapply(1:nrow(sample_sizes), function(i) {
+    temp <- matched_2011 %>% 
+      filter(education == sample_sizes$education[i],
+             age_group == sample_sizes$age_group[i])
+    if(nrow(temp) > sample_sizes$n_min[i]) {
+      temp <- temp %>% sample_n(sample_sizes$n_min[i])
+    }
+    return(temp)
+  }))
+  
+  matched_2016_final <- do.call(rbind, lapply(1:nrow(sample_sizes), function(i) {
+    temp <- matched_2016 %>% 
+      filter(education == sample_sizes$education[i],
+             age_group == sample_sizes$age_group[i])
+    if(nrow(temp) > sample_sizes$n_min[i]) {
+      temp <- temp %>% sample_n(sample_sizes$n_min[i])
+    }
+    return(temp)
+  }))
+  
+  # Add education group labels
+  matched_2011_final <- matched_2011_final %>%
+    mutate(
+      educ_group = case_when(
+        education == 2 ~ "HS",
+        education == 3 ~ "Some College",
+        education == 4 ~ "College Grad"
+      )
+    )
+  
+  matched_2016_final <- matched_2016_final %>%
+    mutate(
+      educ_group = case_when(
+        education == 2 ~ "HS",
+        education == 3 ~ "Some College",
+        education == 4 ~ "College Grad"
+      )
+    )
+  
+  # Print matching results
+  cat("\nMatching results by education and age groups:\n")
+  print(sample_sizes)
+  
+  cat("\nFinal matched sample sizes:\n")
+  cat("2011:", nrow(matched_2011_final), "\n")
+  cat("2016:", nrow(matched_2016_final), "\n")
+  
+  # Add variable check before returning
+  cat("\nVariables in matched 2011 dataset:\n")
+  print(names(matched_2011_final))
+  cat("\nVariables in matched 2016 dataset:\n")
+  print(names(matched_2016_final))
+  
+  return(list(data_2011 = matched_2011_final, 
+              data_2016 = matched_2016_final))
+}
+
+# Run the function 
+matched_data_both <- create_exact_matched_set(standardized_data$data_2011, 
+                                            standardized_data$data_2016)
+
+# To see the results of the new matching
+print(matched_data_both)
+
+cat("\nNew matching (education and age):\n")
+cat("2011:", nrow(matched_data_both$data_2011), "\n")
+cat("2016:", nrow(matched_data_both$data_2016), "\n")
+
+# Look at the distribution across education-age combinations
+table_2011 <- with(matched_data_both$data_2011, table(educ_group, age_group))
+table_2016 <- with(matched_data_both$data_2016, table(educ_group, age_group))
+
+cat("\nDistribution in 2011:\n")
+print(table_2011)
+cat("\nDistribution in 2016:\n")
+print(table_2016)
+
+
+```
+
+
+1. Sample Size Reduction:
+About 24% of original cases retained after matching
+Equal sample sizes in both years (good for comparison)
+
+Initial: 
+- 2011: 1006 cases
+- 2016: 1005 cases
+
+Final Matched:
+- 2011: 242 cases
+- 2016: 242 cases
+
+
+
+
+2. Distribution Balance:
+
+Education × Age Distribution (identical in both years):
+
+College Grad:
+- Middle: 32
+- Old: 27
+- Young-Old: 18
+(Total: 77)
+
+High School:
+- Middle: 38
+- Old: 42
+- Young-Old: 14
+(Total: 94)
+
+Some College:
+- Middle: 34
+- Old: 22
+- Young-Old: 15
+(Total: 71)
+
+Perfect balance achieved between 2011 and 2016
+Largest subgroup: HS/Old (42)
+Smallest subgroup: HS/Young-Old (14)
+Middle age group generally well-represented
+
+Sample size sufficient for analysis but reduced for exact matching
+
+
+
+
+Balance test for matched set on rep, edu, and age
+```{r}
+# Modified balance test function
+balance_test_exact <- function(matched_2011, matched_2016) {
+  # Print basic information first
+  cat("\nSample sizes:\n")
+  cat("2011:", nrow(matched_2011), "\n")
+  cat("2016:", nrow(matched_2016), "\n\n")
+  
+  # Print available variables
+  cat("Variables in 2011 dataset:\n")
+  print(names(matched_2011))
+  cat("\nVariables in 2016 dataset:\n")
+  print(names(matched_2016))
+  
+  # 1. Education x Age balance
+  cat("\n1. Education x Age Distribution:\n")
+  edu_age_2011 <- table(matched_2011$educ_group, matched_2011$age_group)
+  edu_age_2016 <- table(matched_2016$educ_group, matched_2016$age_group)
+  
+  cat("\n2011 Distribution:\n")
+  print(edu_age_2011)
+  cat("\n2016 Distribution:\n")
+  print(edu_age_2016)
+  
+  # 2. Religious Identity (bgain) balance
+  cat("\n2. Religious Identity Distribution:\n")
+  cat("\n2011:\n")
+  print(table(matched_2011$bgain))
+  cat("\n2016:\n")
+  print(table(matched_2016$bgain))
+  
+  # 3. IMM balance (if available)
+  if(!is.null(matched_2011$imm) && !is.null(matched_2016$imm)) {
+    cat("\n3. IMM Distribution:\n")
+    cat("\n2011 Mean:", mean(matched_2011$imm, na.rm = TRUE))
+    cat("\n2016 Mean:", mean(matched_2016$imm, na.rm = TRUE))
+    
+    # T-test for IMM
+    imm_test <- try(t.test(matched_2011$imm, matched_2016$imm))
+    if(!inherits(imm_test, "try-error")) {
+      cat("\nIMM t-test p-value:", imm_test$p.value, "\n")
+    }
+  } else {
+    cat("\nIMM variable not found in datasets\n")
+  }
+}
+
+# Run the balance test
+balance_results <- balance_test_exact(matched_data_both$data_2011, 
+                                    matched_data_both$data_2016)
+```
+
+1. Sample Balance: Perfect numerical balance between years
+
+Total Sample: 
+- 2011: 242
+- 2016: 242
+
+2. Education × Age Balance: Perfect balance achieved across all education-age combinations
+
+Exact matches across all combinations:
+College Grad:
+- Middle (7-8): 32 in both years
+- Old (11-13): 27 in both years
+- Young-Old (9-10): 18 in both years
+
+HS:
+- Middle: 38 in both years
+- Old: 42 in both years
+- Young-Old: 14 in both years
+
+Some College:
+- Middle: 34 in both years
+- Old: 22 in both years
+- Young-Old: 15 in both years
+
+3. Religious Identity (bgain) Distribution: Very similar distribution (slight difference of 4 cases)
+2011: 
+- Non-evangelical (0): 142
+- Evangelical (1): 100
+
+2016:
+- Non-evangelical (0): 146
+- Evangelical (1): 96
+
+
+4. IMM (Outcome Variable) Distribution: Significant increase in IMM from 2011 to 2016
+Highly significant difference (p < 0.001)
+Large effect size (doubled from 0.37 to 0.74)
+
+2011 Mean: 0.37
+2016 Mean: 0.74
+P-value: 2.17e-18
+
+
+5. Key points:
+Successful exact matching on education and age
+Good balance on religious identity
+Significant treatment effect (time) on IMM
+Adequate sample sizes for analysis
+
+
+
+Comparing the mean of morality on a matched dataset
+```{r}
+# Create comparison function
+compare_morality <- function(matched_data_both) {
+  # 2011 comparison
+  moral_2011 <- matched_data_both$data_2011 %>%
+    group_by(bgain) %>%
+    summarise(
+      mean_imm = mean(imm, na.rm = TRUE),
+      sd_imm = sd(imm, na.rm = TRUE),
+      n = n(),
+      se_imm = sd_imm / sqrt(n)
+    ) %>%
+    mutate(year = "2011")
+  
+  # 2016 comparison
+  moral_2016 <- matched_data_both$data_2016 %>%
+    group_by(bgain) %>%
+    summarise(
+      mean_imm = mean(imm, na.rm = TRUE),
+      sd_imm = sd(imm, na.rm = TRUE),
+      n = n(),
+      se_imm = sd_imm / sqrt(n)
+    ) %>%
+    mutate(year = "2016")
+  
+  # Combine results
+  moral_all <- rbind(moral_2011, moral_2016)
+  
+  # Print numerical results
+  cat("Mean Morality Scores (0=Not Immoral, 1=Immoral):\n")
+  cat("================================================\n")
+  print(moral_all %>% select(year, bgain, mean_imm, se_imm, n))
+  
+  # Create visualization
+  plot <- ggplot(moral_all, aes(x = factor(year), y = mean_imm, fill = factor(bgain))) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    geom_errorbar(aes(ymin = mean_imm - 1.96*se_imm, 
+                      ymax = mean_imm + 1.96*se_imm),
+                  position = position_dodge(0.9),
+                  width = 0.2) +
+    labs(title = "Changes in Moral Attitudes: 2011 vs 2016",
+         subtitle = "By Religious Identity (Born Again)",
+         x = "Year",
+         y = "Mean Morality Score",
+         fill = "Born Again") +
+    scale_fill_discrete(labels = c("Non-Evangelical", "Evangelical")) +
+    theme_minimal() +
+    ylim(0, 1)
+  
+  print(plot)
+  
+  # Conduct t-tests
+  # Within year comparisons
+  t_2011 <- t.test(imm ~ bgain, data = matched_data_both$data_2011)
+  t_2016 <- t.test(imm ~ bgain, data = matched_data_both$data_2016)
+  
+  # Within group comparisons
+  evang_t <- t.test(
+    matched_data_both$data_2011$imm[matched_data_both$data_2011$bgain == 1],
+    matched_data_both$data_2016$imm[matched_data_both$data_2016$bgain == 1]
+  )
+  
+  nonevang_t <- t.test(
+    matched_data_both$data_2011$imm[matched_data_both$data_2011$bgain == 0],
+    matched_data_both$data_2016$imm[matched_data_both$data_2016$bgain == 0]
+  )
+  
+  # Print statistical tests
+  cat("\nStatistical Tests:\n")
+  cat("=================\n")
+  cat("2011 Evangelical vs Non-Evangelical: p =", round(t_2011$p.value, 4), "\n")
+  cat("2016 Evangelical vs Non-Evangelical: p =", round(t_2016$p.value, 4), "\n")
+  cat("Evangelical 2011 vs 2016: p =", round(evang_t$p.value, 4), "\n")
+  cat("Non-Evangelical 2011 vs 2016: p =", round(nonevang_t$p.value, 4), "\n")
+}
+
+# Run the comparison
+compare_morality(matched_data_both)
+```
+
+Sample Sizes:
+
+2011:
+- Non-Evangelical (0): 142
+- Evangelical (1): 100
+
+2016:
+- Non-Evangelical (0): 146
+- Evangelical (1): 96
+
+
+
+Mean Morality Scores:
+2011:
+- Non-Evangelical: 0.40 (SE: 0.040)
+- Evangelical: 0.31 (SE: 0.045)
+
+2016:
+- Non-Evangelical: 0.71 (SE: 0.037)
+- Evangelical: 0.79 (SE: 0.041)
+
+
+
+Statistical Tests:
+Within-Year Comparisons:
+- 2011 Evangelical vs Non-Evangelical: p = 0.1347 (not significant)
+- 2016 Evangelical vs Non-Evangelical: p = 0.1789 (not significant)
+
+Between-Year Comparisons:
+- Evangelical 2011 vs 2016: p < 0.001 (highly significant)
+- Non-Evangelical 2011 vs 2016: p < 0.001 (highly significant)
+
+
+
+
+1. Major Shift Over Time:
+Both groups showed significant increases in morality scores from 2011 to 2016
+Evangelicals: 0.31 → 0.79 (↑0.48)
+Non-Evangelicals: 0.40 → 0.71 (↑0.31)
+
+
+2. Group Differences:
+No significant differences between Evangelicals and Non-Evangelicals within each year
+Evangelicals showed larger increase over time (0.48 vs 0.31)
+
+3. Pattern Reversal:
+2011: Evangelicals slightly lower (0.31 vs 0.40)
+2016: Evangelicals slightly higher (0.79 vs 0.71)
+
+This suggests a dramatic shift in moral attitudes between 2011-2016, with both groups showing significant increases but Evangelicals showing the larger change.
+
+
+
+Visualization of the result
+```{r}
+# First, calculate means and standard errors
+summary_data <- rbind(
+  matched_data_both$data_2011 %>%
+    group_by(bgain) %>%
+    summarise(
+      mean_imm = mean(imm, na.rm = TRUE),
+      se = sd(imm, na.rm = TRUE)/sqrt(n())
+    ) %>%
+    mutate(year = "2011"),
+  matched_data_both$data_2016 %>%
+    group_by(bgain) %>%
+    summarise(
+      mean_imm = mean(imm, na.rm = TRUE),
+      se = sd(imm, na.rm = TRUE)/sqrt(n())
+    ) %>%
+    mutate(year = "2016")
+) %>%
+  mutate(religious = ifelse(bgain == 1, "Evangelical", "Non-Evangelical"))
+
+# Bar Graph with custom colors
+bar_plot <- ggplot(summary_data, aes(x = year, y = mean_imm, fill = religious)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymin = mean_imm - 1.96*se, 
+                    ymax = mean_imm + 1.96*se),
+                position = position_dodge(width = 0.9),
+                width = 0.2) +
+  labs(title = "Tolerance of Immorality of Elected Officials: 2011 vs 2016",
+       subtitle = "Bar Graph with 95% Confidence Intervals",
+       x = "Year",
+       y = "Immorality (0 = Not Tolerating Immorality, 1 = Tolerating)",
+       fill = "Religious Identity") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Evangelical" = "#FC8D62", 
+                              "Non-Evangelical" = "#66C2A5")) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 11),
+    legend.position = "bottom"
+  ) +
+  ylim(0, 1)
+
+# Line Graph with same custom colors
+line_plot <- ggplot(summary_data, aes(x = year, y = mean_imm, color = religious, group = religious)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = mean_imm - 1.96*se, 
+                    ymax = mean_imm + 1.96*se),
+                width = 0.1) +
+  labs(title = "Tolerance of Immorality of Elected Officials: 2011 vs 2016",
+       subtitle = "Line Graph with 95% Confidence Intervals",
+       x = "Year",
+       y = "Immorality (0 = Not Tolerating Immorality, 1 = Tolerating)",
+       color = "Religious Identity") +
+  theme_minimal() +
+  scale_color_manual(values = c("Evangelical" = "#FC8D62", 
+                               "Non-Evangelical" = "#66C2A5")) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 11),
+    legend.position = "bottom"
+  ) +
+  ylim(0, 1)
+
+# Display plots
+print(bar_plot)
+print(line_plot)
+```
+
+
+Statistical test
+```{r}
+# Combine datasets with year identifier
+combined_data <- rbind(
+  cbind(matched_data_both$data_2011, year = "2011"),
+  cbind(matched_data_both$data_2016, year = "2016")
+)
+
+# Run two-way ANOVA
+aov_model <- aov(imm ~ year * bgain, data = combined_data)
+summary(aov_model)
+```
+This two-way ANOVA result
+
+Main Effect of Year: Extremely significant effect of year
+Indicates strong change in morality scores between 2011 and 2016
+Regardless of religious identity, attitudes changed significantly
+
+Main Effect of Religious Identity (bgain): No significant overall difference between Evangelicals and Non-Evangelicals
+Religious identity alone doesn't predict morality scores
+Both groups show similar overall levels
+
+Interaction Effect (year:bgain): Marginally significant interaction
+Suggests religious groups changed differently over time
+Evangelicals showed steeper increase than Non-Evangelicals
+
+
+Notes:
+11 observations removed due to missing values
+Residual df = 469
+Model explains significant portion of variance
+
+Key observations:
+- Time is the strongest predictor of attitude change
+- Religious groups changed at different rates
+- Religious identity alone doesn't predict attitudes
+- Model is statistically valid but some data loss occurred
+
+
+
+
+Follow-up t-tests (when ANOVA shows significant effects):
+```{r}
+# Within-year comparisons of Evangelical vs Non-Evangelical
+t.test(imm ~ bgain, data = matched_data_both$data_2011)  # 2011
+t.test(imm ~ bgain, data = matched_data_both$data_2016)  # 2016
+```
+2011 Results (First Test):
+Non-Evangelical (group 0): 0.404
+Evangelical (group 1): 0.313
+Difference: 0.091 (higher for Non-Evangelicals)
+t = 1.5013, p = 0.1347
+95% CI: [-0.029, 0.211]
+
+
+2016 Results (Second Test):
+
+Non-Evangelical (group 0): 0.712
+Evangelical (group 1): 0.787
+Difference: -0.075 (higher for Evangelicals)
+t = -1.3485, p = 0.1789
+95% CI: [-0.185, 0.035]
+
+
+Key Findings:
+
+1. Pattern Reversal:
+2011: Non-Evangelicals scored higher (0.404 vs 0.313)
+2016: Evangelicals scored higher (0.787 vs 0.712)
+
+
+2. Magnitude of Change:
+Non-Evangelicals: 0.404 → 0.712 (↑0.308)
+Evangelicals: 0.313 → 0.787 (↑0.474)
+
+
+3. Statistical Significance:
+Neither year shows significant differences between groups
+2011: p = 0.1347
+2016: p = 0.1789
+
+
+4. Confidence Intervals:
+Both CIs include zero
+Confirms lack of significant differences
+
+
+5. Overall Interpretation:
+- Both groups showed substantial increases, but Evangelicals showed larger increase
+- Groups switched relative positions
+- No significant between-group differences in either year
+- Strong temporal effect for both groups
+
+
+
+
+
+Visualization of variables
+```{r}
+# Create combined dataset with year and religious identity
+combined_data <- rbind(
+  cbind(matched_data_both$data_2011, year = "2011"),
+  cbind(matched_data_both$data_2016, year = "2016")
+)
+
+# 1. Main Interaction Plot with Education Levels
+ggplot(combined_data, aes(x = year, y = imm, color = factor(bgain))) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.2), 
+             alpha = 0.3, size = 2) +
+  stat_summary(fun = mean, geom = "point", size = 3,
+              position = position_dodge(width = 0.2)) +
+  stat_summary(fun = mean, geom = "line", aes(group = factor(bgain)),
+              position = position_dodge(width = 0.2), linewidth = 1) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2,
+              position = position_dodge(width = 0.2)) +
+  facet_wrap(~educ_group) +
+  scale_color_manual(values = c("#66C2A5", "#FC8D62"),
+                    labels = c("Non-Evangelical", "Evangelical")) +
+  labs(title = "Changes in Moral Attitudes by Religious Identity and Education",
+       subtitle = "2011-2016 with 95% Confidence Intervals",
+       x = "Year",
+       y = "Morality Score",
+       color = "Religious Identity") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# 2. Density Plot showing distribution changes
+ggplot(combined_data, aes(x = imm, fill = year)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~factor(bgain, 
+                     labels = c("Non-Evangelical", "Evangelical"))) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Distribution of Moral Attitudes",
+       subtitle = "Comparing 2011 and 2016 by Religious Identity",
+       x = "Morality Score",
+       y = "Density") +
+  theme_minimal()
+
+# 3. Box plot with individual points
+ggplot(combined_data, aes(x = interaction(year, factor(bgain)), y = imm)) +
+  geom_boxplot(aes(fill = year), alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.2) +
+  scale_x_discrete(labels = c("2011\nNon-Evan", "2011\nEvan",
+                             "2016\nNon-Evan", "2016\nEvan")) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Distribution of Moral Attitudes Over Time",
+       subtitle = "With Individual Observations",
+       x = "Year and Religious Identity",
+       y = "Morality Score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+Sensativitiy analysis
+```{r}
+# Create sensitivity analysis function
+sensitivity_analysis <- function(matched_data_both) {
+  # Combine datasets and ensure year is a factor
+  combined_data <- rbind(
+    transform(matched_data_both$data_2011, year = "2011"),
+    transform(matched_data_both$data_2016, year = "2016")
+  )
+  
+  # Initialize results dataframe with additional statistics
+  results <- data.frame(
+    variable = character(),
+    subgroup = character(),
+    n = numeric(),          # Added sample size
+    mean_2011 = numeric(),  # Added mean for 2011
+    mean_2016 = numeric(),  # Added mean for 2016
+    estimate = numeric(),
+    se = numeric(),         # Added standard error
+    p_value = numeric()
+  )
+  
+  # 1. Education subgroups
+  for(edu in unique(combined_data$educ_group)) {
+    subset_data <- combined_data[combined_data$educ_group == edu,]
+    test_result <- t.test(imm ~ year, data = subset_data)
+    
+    results <- rbind(results, data.frame(
+      variable = "Education",
+      subgroup = edu,
+      n = nrow(subset_data),
+      mean_2011 = test_result$estimate[1],
+      mean_2016 = test_result$estimate[2],
+      estimate = diff(test_result$estimate),
+      se = sqrt(test_result$stderr^2 * 2),
+      p_value = test_result$p.value
+    ))
+  }
+  
+  # 2. Age group subgroups
+  for(age in unique(combined_data$age_group)) {
+    subset_data <- combined_data[combined_data$age_group == age,]
+    test_result <- t.test(imm ~ year, data = subset_data)
+    
+    results <- rbind(results, data.frame(
+      variable = "Age",
+      subgroup = age,
+      n = nrow(subset_data),
+      mean_2011 = test_result$estimate[1],
+      mean_2016 = test_result$estimate[2],
+      estimate = diff(test_result$estimate),
+      se = sqrt(test_result$stderr^2 * 2),
+      p_value = test_result$p.value
+    ))
+  }
+  
+  # Create visualization with error bars
+  plot <- ggplot(results, aes(x = subgroup, y = estimate, fill = variable)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    geom_errorbar(aes(ymin = estimate - 1.96*se, 
+                      ymax = estimate + 1.96*se),
+                  position = position_dodge(width = 0.9),
+                  width = 0.2) +
+    geom_text(aes(label = sprintf("p = %.3f\nn = %d", p_value, n)),
+              position = position_dodge(width = 0.9),
+              vjust = -0.5) +
+    facet_wrap(~variable, scales = "free_x") +
+    labs(title = "Sensitivity Analysis by Subgroups",
+         subtitle = "Effect Size and Significance Across Different Subgroups",
+         x = "Subgroup",
+         y = "Estimated Effect Size (2016 - 2011)",
+         fill = "Variable Type") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  print(plot)
+  
+  # Print detailed results
+  cat("\nDetailed Results:\n")
+  print(results)
+  
+  return(results)
+}
+
+# Run sensitivity analysis
+sensitivity_results <- sensitivity_analysis(matched_data_both)
+```
+
+1. All Changes Significant:
+All p-values < 0.001
+Robust effects across all subgroups
+
+
+2. Education Effects:
+Largest change: College Grads (+0.429)
+Smallest change: Some College (+0.306)
+All education levels showed substantial increases
+
+3. Age Effects:
+Largest change: Young-Old (+0.501)
+Smallest change: Middle aged (+0.251)
+Older groups showed larger increases
+
+4. Sample Sizes:
+Well-balanced across education groups
+Young-Old group smaller (n=94)
+Middle aged largest group (n=208)
+
+
+This suggests the change in moral attitudes was robust across all demographic subgroups, with particularly strong effects among older and college-educated respondents.
+
+
+
+______________________________________________________________
+
+1. Primary Estimand:
+The average change in moral attitudes (imm) among Republican evangelicals and nonevangelicals between 2011 and 2016
+Specifically, the difference in tolerance for immorality of elected officials between these two time points
+
+2. Subgroup Estimands:
+
+```{r}
+# For Evangelical Republicans:
+Δe = E[imm(2016) - imm(2011) | bgain = 1]
+
+# For Non-Evangelical Republicans:
+Δn = E[imm(2016) - imm(2011) | bgain = 0]
+```
+
+
+3. Estimators (How We Measure It):
+1) Main Effect Estimator:
+```{r}
+# Difference in means after matching
+estimator = mean(imm_2016) - mean(imm_2011)
+```
+
+2) Subgroup Effect Estimators:
+```{r}
+# For education-matched samples:
+Education_estimator = Σ(w_e * (imm_2016_e - imm_2011_e))
+where:
+- e = education level (HS, Some College, College Grad)
+- w_e = weights for each education level
+```
+
+4. Key Properties:
+- Exact matching on education ensures balance
+- Conditional independence assumption
+- Common support across years
+- No interference between units
+
+The matching process helps ensure these estimators are:
+Unbiased (through education balance)
+Consistent (with sufficient sample size)
+Interpretable (as average treatment effects)
+
