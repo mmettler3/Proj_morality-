@@ -1,6 +1,6 @@
 rm(list=ls())
 
-# requires haven package
+# requires haven and tidyverse package
 
 
 dt11<-haven::read_dta("/Users/mattmettler/Desktop/Data/2011-2020_Dataset/2011_PRRI/prri_2011.DTA") # 2011 prri dataset
@@ -9,12 +9,16 @@ dt16<-haven::read_dta("/Users/mattmettler/Desktop/Data/2011-2020_Dataset/2016_PR
 
 
 
-dt11$rep<- ifelse(dt11$party==1 | dt11$partyln==1,1,0) # rep if party=1 (republican) or party lean=1 (lean republican)
-dt11$dem<- ifelse(dt11$party==2 | dt11$partyln==2,1,0) # dem if party=2 (democrat) or party lean=2 (lean democrat)
+dt11$rep<- ifelse(dt11$partyful<=2,1,0) # rep if party=1 (republican) or party lean=1 (lean republican)
+dt11$dem<- ifelse(dt11$partyful>3 & dt11$partyful<6,1,0) # dem if party=2 (democrat) or party lean=2 (lean democrat)
 dt11$ind<-ifelse( dt11$rep==0 &   dt11$dem==0 & dt11$party==3,1,0)   # independent if not rep or dem            
 
-dt16$rep<- ifelse(dt16$party==1 | dt16$partyln==1,1,0)# same as above
+dt16$rep<- ifelse(dt16$party==1 | dt16$partyln==1,1,0)
+dt16$rep<-ifelse(is.na(dt16$rep),0,dt16$rep)
+
 dt16$dem<- ifelse(dt16$party==2 | dt16$partyln==2,1,0)
+dt16$dem<-ifelse(is.na(dt16$dem),0,dt16$dem)
+
 dt16$ind<-ifelse(dt16$rep==0 & dt16$dem==0 & dt16$party==3,1,0)              
 
 
@@ -38,6 +42,8 @@ dt11$bgain<-ifelse(is.na(dt11$born),0,
 dt16$bgain<-ifelse(is.na(dt16$born),0,
                    ifelse(dt16$born==1,1,0)) #Would you describe yourself as 'born again' or evangelical Christian, or not?
  
+
+dt11$age<-ifelse(dt11$age>13,NA,dt11$age)
 
 dt16$age1<-dt16$age
 dt16<-dt16%>%
