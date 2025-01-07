@@ -1,8 +1,9 @@
 source("/Users/mattmettler/Desktop/Proj_morality/R_scripts/Data_cleaning.R")
 
-# requires estimatr, marginaleffects,and tidyverse packages
 
-dd<-estimatr::lm_robust(imm~age+female+educ1+year+br+did_br,data=m)
+# requires estimatr, marginaleffects,and tidyverse packages
+# using rm dataset from mtaching to run diff in diff
+dd<-estimatr::lm_robust(imm~age+female+educ1+year+br+did_br,data=rm)
 
 
 
