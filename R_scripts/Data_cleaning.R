@@ -122,15 +122,18 @@ dt$did_br<-dt$year*dt$br   # difference in difference interaction of year and in
 df<-haven::read_sav("/Users/mattmettler/Desktop/Data/2011-2020_Dataset/2018_CCES/TM/cces18.sav") # 2018 cces dataset
 
 
-df$bagain<-ifelse(df$religpew==1 & df$pew_bornagain==1| df$religpew==12 & df$pew_bornagain==1,1,0) # evangelical = protestant or something else
+df$bgain<-ifelse(df$religpew==1 & df$pew_bornagain==1| df$religpew==12 & df$pew_bornagain==1,1,0) # evangelical = protestant or something else
 
+
+df$age<- 2018-df$birthyr
+df$female<-ifelse(df$gender==2,1,0)
 
 df$rep_ind<-ifelse(df$pid7>3 & df$pid7<8,1,0)
 df$rep<-ifelse(df$pid7>4 & df$pid7<8,1,0)
 
 
 rb<-df%>%
-  filter(rep_ind==1)# filter to republican or independent 
+  filter(rep==1)# filter to republican or independent 
 
 
 rb$imm<-ifelse(rb$UND475==1,1,
@@ -145,6 +148,6 @@ rb$pt<-ifelse(rb$UND475_picker==3,1,0)   # experimental indicator-Donald Trump
 rb<-rb%>%
 mutate(part_prime = factor(UND475_picker, 
                               levels = c("1", "2", "3"),
-                              labels = c("Without Priming", "Primed with Bill Clinton", "Primed with Trump")))
+                              labels = c("Without Priming", "Clinton prime", "Trump prime")))
 
 
